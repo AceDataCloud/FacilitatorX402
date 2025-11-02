@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "acedatacloud-platform-facilitator"
+version = "0.1.0"
+description = "AceDataCloud X402 facilitator service."
+authors = ["AceDataCloud <dev@acedata.cloud>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+Django = "^3.2.0"
+djangorestframework = "^3.12.4"
+environs = "^9.5.0"
+loguru = "^0.6.0"
+psycopg2-binary = "^2.9.10"
+x402 = "^0.2.1"
+web3 = "^7.6.0"
+pydantic = "^2.10.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
