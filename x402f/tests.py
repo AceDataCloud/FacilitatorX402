@@ -24,18 +24,6 @@ class X402FacilitatorViewTests(TestCase):
         usdc_contract = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
         overrides = override_settings(
-            X402_CONFIG={
-                'pay_to': pay_to,
-                'network': 'base',
-                'facilitator_url': 'https://facilitator.local/x402',
-                'facilitator': {},
-                'max_timeout_seconds': 600,
-                'asset': usdc_contract,
-                'paywall': {},
-            },
-            X402_PAY_TO=pay_to,
-            X402_NETWORK='base',
-            X402_USDC_CONTRACT=usdc_contract,
             X402_RPC_URL='http://localhost:8545',
             X402_SIGNER_PRIVATE_KEY=self.signer_account.key.hex(),
             X402_SIGNER_ADDRESS=self.signer_account.address,

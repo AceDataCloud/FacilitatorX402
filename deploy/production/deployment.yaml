@@ -58,24 +58,6 @@ spec:
                   key: PGSQL_USER
                   name: pgsql
                   optional: false
-            - name: X402_PAY_TO
-              valueFrom:
-                secretKeyRef:
-                  key: PAY_TO
-                  name: x402
-                  optional: false
-            - name: X402_NETWORK
-              valueFrom:
-                secretKeyRef:
-                  key: NETWORK
-                  name: x402
-                  optional: false
-            - name: X402_USDC_CONTRACT
-              valueFrom:
-                secretKeyRef:
-                  key: USDC_CONTRACT
-                  name: x402
-                  optional: false
             - name: X402_RPC_URL
               valueFrom:
                 secretKeyRef:

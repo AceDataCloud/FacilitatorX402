@@ -173,32 +173,33 @@ def _recover_payer_address(typed_data: dict, signature: str) -> str:
 
 
 def _validate_payload(payload: PaymentPayload, requirements: PaymentRequirements) -> ValidatedAuthorization:
-    expected_pay_to = (settings.X402_CONFIG or {}).get('pay_to')
-    expected_network = (settings.X402_CONFIG or {}).get('network')
-    expected_asset = getattr(settings, 'X402_USDC_CONTRACT', '').lower()
-
-    if not expected_pay_to or not expected_network or not expected_asset:
-        raise X402FacilitatorError(
-            'X402 facilitator configuration is incomplete.')
-
-    network_value = str(requirements.network)
-    if network_value.lower() != str(expected_network).lower():
-        raise X402FacilitatorValidationError('Payment network mismatch.')
-
-    if requirements.pay_to.lower() != expected_pay_to.lower():
-        raise X402FacilitatorValidationError('Payment destination mismatch.')
-
-    if requirements.asset.lower() != expected_asset:
-        raise X402FacilitatorValidationError('Unsupported payment asset.')
-
     authorization = payload.payload.authorization
+    if not requirements.pay_to:
+        raise X402FacilitatorValidationError('Payment destination missing.')
+    if not requirements.asset:
+        raise X402FacilitatorValidationError('Payment asset missing.')
+    if not str(requirements.network or '').strip():
+        raise X402FacilitatorValidationError('Payment network missing.')
 
-    if authorization.to.lower() != expected_pay_to.lower():
+    pay_to_requirement = _normalize_address(requirements.pay_to)
+    authorization_to = _normalize_address(authorization.to)
+    if authorization_to != pay_to_requirement:
         raise X402FacilitatorValidationError(
             'Authorization destination mismatch.')
 
-    max_amount = int(requirements.max_amount_required)
-    value = int(authorization.value)
+    if requirements.max_amount_required is None:
+        raise X402FacilitatorValidationError(
+            'Payment requirements missing max amount.')
+    try:
+        max_amount = int(requirements.max_amount_required)
+    except (TypeError, ValueError) as exc:
+        raise X402FacilitatorValidationError(
+            'Invalid max amount in payment requirements.') from exc
+    try:
+        value = int(authorization.value)
+    except (TypeError, ValueError) as exc:
+        raise X402FacilitatorValidationError(
+            'Authorization value must be an integer.') from exc
     if value <= 0:
         raise X402FacilitatorValidationError(
             'Authorization value must be positive.')
@@ -207,8 +208,12 @@ def _validate_payload(payload: PaymentPayload, requirements: PaymentRequirements
             'Authorization value exceeds the required cap.')
 
     now_ts = int(timezone.now().timestamp())
-    valid_after = int(authorization.valid_after)
-    valid_before = int(authorization.valid_before)
+    try:
+        valid_after = int(authorization.valid_after)
+        valid_before = int(authorization.valid_before)
+    except (TypeError, ValueError) as exc:
+        raise X402FacilitatorValidationError(
+            'Authorization validity window must be integers.') from exc
 
     if valid_before <= now_ts:
         raise X402FacilitatorValidationError(
@@ -285,8 +290,9 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     account = web3.eth.account.from_key(private_key)
     signer_address = _normalize_address(configured_address or account.address)
 
+    asset_address = _normalize_address(data.requirements.asset)
     contract = web3.eth.contract(
-        address=_normalize_address(settings.X402_USDC_CONTRACT),
+        address=asset_address,
         abi=USDC_TRANSFER_WITH_AUTHORIZATION_ABI,
     )
 
