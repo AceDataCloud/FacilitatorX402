@@ -2,8 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: platform-facilitator
-  name: platform-facilitator
+    app: facilitator-backend
+  name: facilitator-backend
   namespace: acedatacloud
 spec:
   ports:
@@ -11,4 +11,4 @@ spec:
       port: 8000
       targetPort: 8000
   selector:
-    app: platform-facilitator
+    app: facilitator-backend

@@ -1,10 +1,10 @@
 version: "3"
 services:
-  acedatacloud-platform-facilitator:
+  acedatacloud-facilitator-backend:
     platform: linux/amd64
-    container_name: "acedatacloud-platform-facilitator"
+    container_name: "acedatacloud-facilitator-backend"
     build: ./
-    image: "ghcr.io/acedatacloud/platform-facilitator:${BUILD_NUMBER}"
+    image: "ghcr.io/acedatacloud/facilitator-backend:${BUILD_NUMBER}"
     ports:
       - "8000:8000"
     env_file:

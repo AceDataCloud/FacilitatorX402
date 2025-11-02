@@ -59,7 +59,10 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': env.str('DATABASE_ENGINE', 'django.db.backends.postgresql_psycopg2'),
-        'NAME': env.str('PGSQL_DATABASE', 'acedatacloud_facilitator'),
+        'NAME': env.str(
+            'PGSQL_DATABASE_FACILITATOR',
+            env.str('PGSQL_DATABASE', 'acedatacloud_facilitator'),
+        ),
         'USER': env.str('PGSQL_USER', 'postgres'),
         'PASSWORD': env.str('PGSQL_PASSWORD', 'mysecretpassword'),
         'HOST': env.str('PGSQL_HOST', 'localhost'),

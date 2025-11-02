@@ -2,8 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: platform-facilitator
-  name: platform-facilitator
+    app: facilitator-backend
+  name: facilitator-backend
   namespace: acedatacloud
 spec:
   progressDeadlineSeconds: 600
@@ -11,7 +11,7 @@ spec:
   revisionHistoryLimit: 5
   selector:
     matchLabels:
-      app: platform-facilitator
+      app: facilitator-backend
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -20,7 +20,7 @@ spec:
   template:
     metadata:
       labels:
-        app: platform-facilitator
+        app: facilitator-backend
     spec:
       containers:
         - env:
@@ -32,8 +32,8 @@ spec:
                   key: SECRET_KEY
                   name: app
                   optional: false
-            - name: PGSQL_DATABASE_PLATFORM
-              value: acedatacloud_platform
+            - name: PGSQL_DATABASE_FACILITATOR
+              value: acedatacloud_facilitator
             - name: PGSQL_HOST
               valueFrom:
                 secretKeyRef:
@@ -62,37 +62,37 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: X402_PAY_TO
-                  name: platform-shared
+                  name: facilitator-shared
                   optional: false
             - name: X402_NETWORK
               valueFrom:
                 secretKeyRef:
                   key: X402_NETWORK
-                  name: platform-shared
+                  name: facilitator-shared
                   optional: false
             - name: X402_USDC_CONTRACT
               valueFrom:
                 secretKeyRef:
                   key: X402_USDC_CONTRACT
-                  name: platform-shared
+                  name: facilitator-shared
                   optional: false
             - name: X402_RPC_URL
               valueFrom:
                 secretKeyRef:
                   key: X402_RPC_URL
-                  name: platform-shared
+                  name: facilitator-shared
                   optional: false
             - name: X402_SIGNER_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   key: X402_SIGNER_PRIVATE_KEY
-                  name: platform-shared
+                  name: facilitator-shared
                   optional: false
             - name: X402_SIGNER_ADDRESS
               valueFrom:
                 secretKeyRef:
                   key: X402_SIGNER_ADDRESS
-                  name: platform-shared
+                  name: facilitator-shared
                   optional: false
             - name: X402_GAS_LIMIT
               value: "250000"
@@ -102,9 +102,9 @@ spec:
               value: "0"
             - name: X402_MAX_PRIORITY_FEE_PER_GAS_WEI
               value: "0"
-          image: ghcr.io/acedatacloud/platform-facilitator:${TAG}
+          image: ghcr.io/acedatacloud/facilitator-backend:${TAG}
           imagePullPolicy: IfNotPresent
-          name: platform-facilitator
+          name: facilitator-backend
           ports:
             - containerPort: 8000
               protocol: TCP

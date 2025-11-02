@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "acedatacloud-platform-facilitator"
+name = "acedatacloud-facilitator-backend"
 version = "0.1.0"
 description = "AceDataCloud X402 facilitator service."
 authors = ["AceDataCloud <dev@acedata.cloud>"]
