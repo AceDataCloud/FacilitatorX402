@@ -8,5 +8,11 @@ services:
     ports:
       - "8008:8000"
     command: ["uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
-    env_file:
-      - .env
+    environment:
+      X402_RPC_URL:
+      X402_SIGNER_PRIVATE_KEY:
+      X402_SIGNER_ADDRESS:
+      X402_GAS_LIMIT:
+      X402_TX_TIMEOUT_SECONDS:
+      X402_MAX_FEE_PER_GAS_WEI:
+      X402_MAX_PRIORITY_FEE_PER_GAS_WEI:
