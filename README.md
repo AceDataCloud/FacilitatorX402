@@ -26,9 +26,9 @@ Web-scale applications and AI agents need instant, programmable settlement. Lega
 
 ## Facilitator capabilities
 
-- **Authorization verification** – `POST /x402/verify` checks payload integrity and signature, enforces caps/validity, and persists the nonce for replay protection.
-- **Settlement execution** – `POST /x402/settle` re-validates the stored authorization, invokes `transferWithAuthorization`, waits for the receipt, and marks the record as settled.
-- **Operational endpoints** – `/` and `/healthz` provide JSON probes for L7 load balancers.
+- **Authorization verification** – `POST /verify` checks payload integrity and signature, enforces caps/validity, and persists the nonce for replay protection.
+- **Settlement execution** – `POST /settle` re-validates the stored authorization, invokes `transferWithAuthorization`, waits for the receipt, and marks the record as settled.
+- **Operational endpoints** – `/` serves a facilitator overview for humans, while `/healthz` exposes a JSON probe for L7 load balancers.
 - **Web3 integration** – Configurable RPC endpoint, gas limits, and optional EIP-1559 fees. Supports any stablecoin contract address supplied in the request.
 - **Automated delivery** – `.github/workflows/deploy.yaml` builds & deploys to Kubernetes using `deploy/run.sh` and the manifests under `deploy/production/`.
 
@@ -75,7 +75,7 @@ python manage.py runserver 0.0.0.0:8008
 ## API quick reference
 
 ```http
-POST /x402/verify
+POST /verify
 Content-Type: application/json
 
 {
@@ -91,7 +91,7 @@ Response:
 ```
 
 ```http
-POST /x402/settle
+POST /settle
 ```
 
 Response on success:

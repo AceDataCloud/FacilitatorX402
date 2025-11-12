@@ -16,11 +16,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
-from core.views import health
+from core.views import health, home
 
 urlpatterns = [
-    path('', health, name='health'),
+    path('', home, name='home'),
     path('healthz', health, name='healthz'),
+    path('', include('x402f.urls', namespace='x402')),
     path('admin/', admin.site.urls),
-    path('x402/', include('x402f.urls', namespace='x402')),
 ]
