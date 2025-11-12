@@ -91,6 +91,17 @@ def _normalize_nonce(nonce: str) -> Tuple[str, HexBytes]:
     return nonce_bytes.hex(), nonce_bytes
 
 
+def _get_expected_pay_to_address() -> str:
+    configured = getattr(settings, 'X402_PAY_TO_ADDRESS', '').strip()
+    if not configured:
+        raise X402FacilitatorError('X402_PAY_TO_ADDRESS is not configured.')
+    try:
+        return _normalize_address(configured)
+    except X402FacilitatorValidationError as exc:
+        raise X402FacilitatorError(
+            'X402_PAY_TO_ADDRESS is not a valid ethereum address.') from exc
+
+
 def _parse_payload(request_data: dict) -> Tuple[PaymentPayload, PaymentRequirements]:
     try:
         payload = PaymentPayload.model_validate(request_data['paymentPayload'])
@@ -181,7 +192,11 @@ def _validate_payload(payload: PaymentPayload, requirements: PaymentRequirements
     if not str(requirements.network or '').strip():
         raise X402FacilitatorValidationError('Payment network missing.')
 
+    expected_pay_to = _get_expected_pay_to_address()
     pay_to_requirement = _normalize_address(requirements.pay_to)
+    if pay_to_requirement != expected_pay_to:
+        raise X402FacilitatorValidationError(
+            'Payment destination not accepted by this facilitator.')
     authorization_to = _normalize_address(authorization.to)
     if authorization_to != pay_to_requirement:
         raise X402FacilitatorValidationError(

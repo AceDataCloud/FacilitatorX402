@@ -44,12 +44,13 @@ Environment variables govern runtime behaviour (see the supplied `.env`).
 | `X402_RPC_URL`                                                                           | RPC endpoint used for settlement transactions | Yes      | —                          |
 | `X402_SIGNER_PRIVATE_KEY`                                                                | Private key used to sign settlements          | Yes      | —                          |
 | `X402_SIGNER_ADDRESS`                                                                    | Optional explicit signer address              | No       | derived from key           |
+| `X402_PAY_TO_ADDRESS`                                                                    | Destination address enforced for payouts      | Yes      | —                          |
 | `X402_GAS_LIMIT`                                                                         | Gas limit applied to settlements              | No       | `250000`                   |
 | `X402_TX_TIMEOUT_SECONDS`                                                                | Timeout (seconds) waiting for receipts        | No       | `120`                      |
 | `X402_MAX_FEE_PER_GAS_WEI`                                                               | Max fee per gas (EIP-1559)                    | No       | `0` (use legacy gas price) |
 | `X402_MAX_PRIORITY_FEE_PER_GAS_WEI`                                                      | Priority fee per gas (EIP-1559)               | No       | `0`                        |
 
-Callers are responsible for restricting `pay_to`, `asset`, and `network` values in payloads to approved destinations.
+Facilitator X402 rejects authorizations whose `pay_to` does not match `X402_PAY_TO_ADDRESS`; callers remain responsible for constraining `asset` and `network`.
 
 ## Development workflow
 

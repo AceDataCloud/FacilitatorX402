@@ -27,6 +27,7 @@ class X402FacilitatorViewTests(TestCase):
             X402_RPC_URL='http://localhost:8545',
             X402_SIGNER_PRIVATE_KEY=self.signer_account.key.hex(),
             X402_SIGNER_ADDRESS=self.signer_account.address,
+            X402_PAY_TO_ADDRESS=pay_to,
             X402_GAS_LIMIT=250000,
             X402_TX_TIMEOUT_SECONDS=10,
         )
@@ -120,6 +121,24 @@ class X402FacilitatorViewTests(TestCase):
         self.assertFalse(body['isValid'])
         self.assertIn('nonce', body['invalidReason'])
         self.assertEqual(X402Authorization.objects.count(), 1)
+
+    def test_verify_rejects_unrecognized_pay_to(self):
+        original_pay_to = self.requirements.pay_to
+        self.requirements.pay_to = Account.create('x402-unallowed-payto').address
+        request_payload = self._build_request_payload()
+        self.requirements.pay_to = original_pay_to
+
+        response = self.client.post(
+            reverse('x402:verify'),
+            data=json.dumps(request_payload),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body['isValid'])
+        self.assertIn('destination', body['invalidReason'])
+        self.assertEqual(X402Authorization.objects.count(), 0)
 
     @patch('x402f.views._submit_transfer_with_authorization', return_value='0xabc123')
     def test_settle_marks_authorization_settled(self, submit_mock):
