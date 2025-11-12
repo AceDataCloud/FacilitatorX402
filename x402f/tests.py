@@ -27,7 +27,7 @@ class X402FacilitatorViewTests(TestCase):
             X402_RPC_URL='http://localhost:8545',
             X402_SIGNER_PRIVATE_KEY=self.signer_account.key.hex(),
             X402_SIGNER_ADDRESS=self.signer_account.address,
-            X402_PAY_TO=pay_to,
+            X402_PAY_TO_ADDRESS=pay_to,
             X402_GAS_LIMIT=250000,
             X402_TX_TIMEOUT_SECONDS=10,
         )

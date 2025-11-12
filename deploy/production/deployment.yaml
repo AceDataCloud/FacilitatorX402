@@ -76,7 +76,7 @@ spec:
                   key: SIGNER_ADDRESS
                   name: x402
                   optional: false
-            - name: X402_PAY_TO
+            - name: X402_PAY_TO_ADDRESS
               valueFrom:
                 secretKeyRef:
                   key: PAY_TO

@@ -92,14 +92,14 @@ def _normalize_nonce(nonce: str) -> Tuple[str, HexBytes]:
 
 
 def _get_expected_pay_to_address() -> str:
-    configured = getattr(settings, 'X402_PAY_TO', '').strip()
+    configured = getattr(settings, 'X402_PAY_TO_ADDRESS', '').strip()
     if not configured:
-        raise X402FacilitatorError('X402_PAY_TO is not configured.')
+        raise X402FacilitatorError('X402_PAY_TO_ADDRESS is not configured.')
     try:
         return _normalize_address(configured)
     except X402FacilitatorValidationError as exc:
         raise X402FacilitatorError(
-            'X402_PAY_TO is not a valid ethereum address.') from exc
+            'X402_PAY_TO_ADDRESS is not a valid ethereum address.') from exc
 
 
 def _parse_payload(request_data: dict) -> Tuple[PaymentPayload, PaymentRequirements]:
