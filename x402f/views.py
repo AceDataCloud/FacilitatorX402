@@ -16,7 +16,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from web3 import HTTPProvider, Web3
-from web3.exceptions import ContractLogicError
+from web3.exceptions import ContractLogicError, BadFunctionCallOutput
 
 from x402.chains import get_chain_id
 from x402.types import PaymentPayload, PaymentRequirements
@@ -337,9 +337,11 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     # Pre-flight simulation to surface clearer on-chain revert reasons
     try:
         transfer_fn.call({'from': signer_address})
-    except ContractLogicError as exc:
-        # Map to a more specific, user-friendly error where possible
-        friendly = _map_contract_logic_error(exc)
+    except (ContractLogicError, BadFunctionCallOutput) as exc:
+        if isinstance(exc, ContractLogicError):
+            friendly = _map_contract_logic_error(exc)
+        else:
+            friendly = 'Unable to simulate transfer; check the authorization parameters.'
         logger.error('x402 settlement simulation failed: {}', exc)
         raise X402FacilitatorError(friendly) from exc
 
