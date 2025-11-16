@@ -350,7 +350,7 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     # Pre-flight simulation to surface clearer on-chain revert reasons
     try:
         transfer_fn.call({'from': signer_address})
-    except (ContractLogicError, BadFunctionCallOutput) as exc:
+    except ContractLogicError as exc:
         code_size = None
         try:
             code = web3.eth.get_code(asset_address)
@@ -362,15 +362,9 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
                 code_exc,
             )
 
-        if isinstance(exc, ContractLogicError):
-            friendly = _map_contract_logic_error(exc)
-        else:
-            friendly = (
-                'Unable to simulate transfer on asset contract. '
-                'Please verify the token address, network, and authorization parameters.'
-            )
+        friendly = _map_contract_logic_error(exc)
         logger.error(
-            'x402 settlement simulation failed for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}',
+            'x402 settlement simulation reverted for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}',
             asset_address,
             code_size,
             str(data.requirements.network),
@@ -383,6 +377,34 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
             exc,
         )
         raise X402FacilitatorError(friendly) from exc
+    except BadFunctionCallOutput as exc:
+        # Some USDC implementations do not return a bool for transferWithAuthorization
+        # and instead return empty data. In that case, we log diagnostics but continue
+        # and rely on the actual transaction receipt to detect failures.
+        code_size = None
+        try:
+            code = web3.eth.get_code(asset_address)
+            code_size = len(code or b'')
+        except Exception as code_exc:  # pragma: no cover - diagnostics only
+            logger.warning(
+                'x402 unable to fetch token bytecode for {}: {}',
+                asset_address,
+                code_exc,
+            )
+
+        logger.warning(
+            'x402 settlement simulation returned empty data for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}; continuing without simulation.',
+            asset_address,
+            code_size,
+            str(data.requirements.network),
+            authorization.from_,
+            authorization.to,
+            int(authorization.value),
+            int(authorization.valid_after),
+            int(authorization.valid_before),
+            authorization.nonce,
+            exc,
+        )
 
     try:
         estimated_gas = transfer_fn.estimate_gas({'from': signer_address})
