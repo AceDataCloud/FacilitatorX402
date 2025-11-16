@@ -313,6 +313,19 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     signer_address = _normalize_address(configured_address or account.address)
 
     asset_address = _normalize_address(data.requirements.asset)
+    logger.debug(
+        'x402 settlement starting: network={} chain_id={} asset={} signer={} payer={} pay_to={} value={} valid_after={} valid_before={}',
+        str(data.requirements.network),
+        getattr(web3.eth, 'chain_id', None),
+        asset_address,
+        signer_address,
+        data.payer,
+        data.pay_to,
+        int(data.value),
+        int(data.valid_after_ts),
+        int(data.valid_before_ts),
+    )
+
     contract = web3.eth.contract(
         address=asset_address,
         abi=USDC_TRANSFER_WITH_AUTHORIZATION_ABI,
@@ -338,11 +351,37 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     try:
         transfer_fn.call({'from': signer_address})
     except (ContractLogicError, BadFunctionCallOutput) as exc:
+        code_size = None
+        try:
+            code = web3.eth.get_code(asset_address)
+            code_size = len(code or b'')
+        except Exception as code_exc:  # pragma: no cover - diagnostics only
+            logger.warning(
+                'x402 unable to fetch token bytecode for {}: {}',
+                asset_address,
+                code_exc,
+            )
+
         if isinstance(exc, ContractLogicError):
             friendly = _map_contract_logic_error(exc)
         else:
-            friendly = 'Unable to simulate transfer; check the authorization parameters.'
-        logger.error('x402 settlement simulation failed: {}', exc)
+            friendly = (
+                'Unable to simulate transfer on asset contract. '
+                'Please verify the token address, network, and authorization parameters.'
+            )
+        logger.error(
+            'x402 settlement simulation failed for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}',
+            asset_address,
+            code_size,
+            str(data.requirements.network),
+            authorization.from_,
+            authorization.to,
+            int(authorization.value),
+            int(authorization.valid_after),
+            int(authorization.valid_before),
+            authorization.nonce,
+            exc,
+        )
         raise X402FacilitatorError(friendly) from exc
 
     try:
