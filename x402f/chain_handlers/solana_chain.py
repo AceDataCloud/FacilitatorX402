@@ -293,6 +293,61 @@ class SolanaChainHandler(ChainHandler):
             )
 
         try:
+            if not isinstance(requirements, dict):
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Invalid payment requirements'
+                )
+
+            facilitator_address = self.config.get('signer_address', '')
+            if not facilitator_address:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Facilitator address not configured'
+                )
+
+            required_fields = ['payTo', 'asset', 'maxAmountRequired']
+            missing = [f for f in required_fields if not requirements.get(f)]
+            if missing:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason=f"Missing payment requirements: {', '.join(missing)}"
+                )
+
+            pay_to = requirements.get('payTo') or requirements.get('pay_to')
+            if not self.validate_address(pay_to or ''):
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Invalid payTo address'
+                )
+
+            try:
+                max_amount_required = int(requirements.get('maxAmountRequired'))
+            except Exception:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Invalid maxAmountRequired'
+                )
+            if max_amount_required <= 0:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='maxAmountRequired must be positive'
+                )
+
+            asset = requirements.get('asset')
+            if not asset:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Missing asset in requirements'
+                )
+
+            fee_payer_hint = (requirements.get('extra') or {}).get('feePayer')
+            if fee_payer_hint and fee_payer_hint != facilitator_address:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Fee payer in requirements does not match facilitator configuration'
+                )
+
             # Extract base64-encoded transaction
             raw_payload = payload.get('payload')
             if isinstance(raw_payload, dict):
@@ -314,13 +369,6 @@ class SolanaChainHandler(ChainHandler):
                 )
 
             # Get facilitator pubkey
-            facilitator_address = self.config.get('signer_address', '')
-            if not facilitator_address:
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason='Facilitator address not configured'
-                )
-
             facilitator_pubkey = Pubkey.from_string(facilitator_address)
 
             # Verify facilitator is the fee payer

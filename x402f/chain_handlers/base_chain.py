@@ -4,7 +4,7 @@ Base chain handler for EVM-based Base network.
 from typing import Dict, Any
 from web3 import Web3, HTTPProvider
 from web3.exceptions import ContractLogicError, BadFunctionCallOutput
-from eth_account.messages import encode_structured_data
+from eth_account.messages import encode_typed_data
 from hexbytes import HexBytes
 from loguru import logger
 
@@ -90,40 +90,36 @@ class BaseChainHandler(ChainHandler):
         Verify EIP-712 signature for USDC transferWithAuthorization.
         """
         try:
-            # Extract authorization data
             authorization = payload.get('payload', {}).get('authorization', {})
-            signature = payload.get('signature', '')
+            # Signature may be top-level (legacy) or inside payload
+            signature = payload.get('signature') or payload.get(
+                'payload', {}).get('signature', '')
+            extra = requirements.get('extra', {}) or {}
 
-            # Build EIP-712 typed data
-            extra = requirements.get('extra', {})
-            eip712_data = extra.get('eip712', {})
-
-            if not eip712_data:
+            required_fields = ['from', 'to', 'value',
+                               'validAfter', 'validBefore', 'nonce']
+            missing = [f for f in required_fields if not authorization.get(f)]
+            if missing:
                 return VerificationResult(
                     is_valid=False,
-                    invalid_reason='Missing EIP-712 data in requirements'
+                    invalid_reason=f"Missing authorization fields: {', '.join(missing)}"
                 )
 
-            # Encode and recover signer
-            signable_message = encode_structured_data(eip712_data)
-            recovered_address = Web3().eth.account.recover_message(
-                signable_message,
-                signature=signature
-            )
-
-            payer = self._normalize_address(authorization.get('from', ''))
-            recovered = self._normalize_address(recovered_address)
-
-            if payer != recovered:
+            if not signature:
                 return VerificationResult(
                     is_valid=False,
-                    invalid_reason=f'Signature mismatch: expected {payer}, got {recovered}',
-                    payer=recovered
+                    invalid_reason='Missing authorization signature'
                 )
 
-            # Validate amounts and addresses match
-            pay_to = self._normalize_address(requirements.get('payTo', ''))
-            auth_to = self._normalize_address(authorization.get('to', ''))
+            try:
+                payer = self._normalize_address(authorization.get('from', ''))
+                pay_to = self._normalize_address(requirements.get('payTo', ''))
+                auth_to = self._normalize_address(authorization.get('to', ''))
+            except Exception as exc:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason=f'Invalid address in payload: {exc}'
+                )
 
             if pay_to != auth_to:
                 return VerificationResult(
@@ -131,13 +127,107 @@ class BaseChainHandler(ChainHandler):
                     invalid_reason=f'Recipient mismatch: expected {pay_to}, got {auth_to}'
                 )
 
-            max_amount = int(requirements.get('maxAmountRequired', '0'))
-            auth_value = int(authorization.get('value', '0'))
+            try:
+                max_amount = int(requirements.get('maxAmountRequired', '0'))
+                auth_value = int(authorization.get('value', '0'))
+            except (TypeError, ValueError):
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Invalid amount in payload or requirements'
+                )
 
             if auth_value > max_amount:
                 return VerificationResult(
                     is_valid=False,
                     invalid_reason=f'Amount exceeds limit: {auth_value} > {max_amount}'
+                )
+
+            domain_name = extra.get('name') or extra.get(
+                'domain', {}).get('name')
+            domain_version = extra.get('version') or extra.get(
+                'domain', {}).get('version')
+            verifying_contract = extra.get('verifyingContract') or extra.get(
+                'domain', {}).get('verifyingContract') or requirements.get('asset', '')
+            chain_id = extra.get('chainId') or extra.get(
+                'domain', {}).get('chainId') or self.CHAIN_ID
+
+            if not domain_name or not domain_version:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Missing token domain metadata'
+                )
+            if not verifying_contract:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason='Missing token contract address'
+                )
+
+            try:
+                nonce_bytes = HexBytes(authorization['nonce'])
+                if len(nonce_bytes) != 32:
+                    raise ValueError('Nonce must be 32 bytes')
+            except Exception as exc:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason=f'Invalid authorization nonce: {exc}'
+                )
+
+            try:
+                typed_data = {
+                    'types': {
+                        'EIP712Domain': [
+                            {'name': 'name', 'type': 'string'},
+                            {'name': 'version', 'type': 'string'},
+                            {'name': 'chainId', 'type': 'uint256'},
+                            {'name': 'verifyingContract', 'type': 'address'},
+                        ],
+                        'TransferWithAuthorization': [
+                            {'name': 'from', 'type': 'address'},
+                            {'name': 'to', 'type': 'address'},
+                            {'name': 'value', 'type': 'uint256'},
+                            {'name': 'validAfter', 'type': 'uint256'},
+                            {'name': 'validBefore', 'type': 'uint256'},
+                            {'name': 'nonce', 'type': 'bytes32'},
+                        ],
+                    },
+                    'primaryType': 'TransferWithAuthorization',
+                    'domain': {
+                        'name': domain_name,
+                        'version': domain_version,
+                        'chainId': int(chain_id),
+                        'verifyingContract': self._normalize_address(verifying_contract),
+                    },
+                    'message': {
+                        'from': payer,
+                        'to': auth_to,
+                        'value': int(authorization['value']),
+                        'validAfter': int(authorization['validAfter']),
+                        'validBefore': int(authorization['validBefore']),
+                        'nonce': nonce_bytes,
+                    },
+                }
+            except Exception as exc:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason=f'Unable to build typed data: {exc}'
+                )
+
+            try:
+                signable_message = encode_typed_data(full_message=typed_data)
+                recovered_address = Web3().eth.account.recover_message(
+                    signable_message, signature=signature)
+                recovered = self._normalize_address(recovered_address)
+            except Exception as exc:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason=f'Verification error: {exc}'
+                )
+
+            if payer != recovered:
+                return VerificationResult(
+                    is_valid=False,
+                    invalid_reason=f'Signature mismatch: expected {payer}, got {recovered}',
+                    payer=recovered,
                 )
 
             return VerificationResult(
@@ -146,7 +236,7 @@ class BaseChainHandler(ChainHandler):
                 details={
                     'amount': auth_value,
                     'nonce': authorization.get('nonce'),
-                }
+                },
             )
 
         except Exception as e:
@@ -196,7 +286,9 @@ class BaseChainHandler(ChainHandler):
             signer_address = self._normalize_address(account.address)
 
             authorization = payload.get('payload', {}).get('authorization', {})
-            signature = payload.get('signature', '')
+            # Signature may be top-level or nested under payload
+            signature = payload.get('signature') or payload.get(
+                'payload', {}).get('signature', '')
             asset_address = self._normalize_address(
                 requirements.get('asset', ''))
 
@@ -257,8 +349,18 @@ class BaseChainHandler(ChainHandler):
             signed = web3.eth.account.sign_transaction(
                 transaction, private_key=private_key)
 
+            # Handle raw transaction attribute name across web3 versions
+            raw_tx = getattr(signed, 'rawTransaction', None)
+            if raw_tx is None:
+                raw_tx = getattr(signed, 'raw_transaction', None)
+            if raw_tx is None:
+                return SettlementResult(
+                    success=False,
+                    error_reason='Signer returned unexpected transaction encoding'
+                )
+
             # Send transaction
-            tx_hash = web3.eth.send_raw_transaction(signed.rawTransaction)
+            tx_hash = web3.eth.send_raw_transaction(raw_tx)
             logger.info(f'Settlement transaction submitted: {tx_hash.hex()}')
 
             # Wait for confirmation

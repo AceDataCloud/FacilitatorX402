@@ -147,6 +147,8 @@ class X402VerifyView(APIView):
             # Extract nonce and other data
             nonce = result.details.get('nonce') if result.details else payload.get(
                 'payload', {}).get('nonce')
+            # Always capture signature (top-level or nested) for storage/fallback
+            signature = payload.get('signature') or payload.get('payload', {}).get('signature', '')
             if not nonce:
                 # Try to get from transaction data
                 tx_data = payload.get('payload', {}).get('transaction', {})
@@ -154,7 +156,6 @@ class X402VerifyView(APIView):
 
             if not nonce:
                 # Generate a unique identifier from signature
-                signature = payload.get('signature', '')
                 nonce = f"{network}:{signature[:32]}"
 
             # Store authorization record
@@ -170,7 +171,7 @@ class X402VerifyView(APIView):
                             datetime_timezone.utc),  # Simplified
                         valid_before=datetime.now(
                             datetime_timezone.utc),  # Simplified
-                        signature=payload.get('signature', ''),
+                        signature=signature,
                         payment_requirements=requirements,
                         payment_payload=payload,
                     )
@@ -262,13 +263,35 @@ class X402SettleView(APIView):
         network = requirements.get('network', 'base')
         logger.debug(f'x402 settlement for network: {network}')
 
-        # Extract nonce from payload
-        signature = payload.get('signature', '')
-        nonce = payload.get('payload', {}).get('nonce')
-        if not nonce:
-            tx_data = payload.get('payload', {}).get('transaction', {})
-            nonce = tx_data.get(
-                'nonce') if tx_data else f"{network}:{signature[:32]}"
+        # Extract nonce from payload, handling both EVM and Solana shapes
+        raw_payload = payload.get('payload')
+        signature = payload.get('signature') or (raw_payload.get('signature') if isinstance(raw_payload, dict) else '')
+
+        nonce = None
+        auth = raw_payload.get('authorization') if isinstance(raw_payload, dict) else {}
+        if isinstance(raw_payload, dict):
+            nonce = raw_payload.get('nonce') or (auth or {}).get('nonce')
+            tx_data = raw_payload.get('transaction')
+            if nonce is None and isinstance(tx_data, dict):
+                nonce = tx_data.get('nonce')
+        else:
+            # raw_payload might be a base64 solana transaction string
+            tx_data = raw_payload
+
+        # For solana, derive nonce from first signature if not provided
+        if nonce is None and str(network).lower().startswith('solana') and tx_data:
+            try:
+                import base64
+                from solders.transaction import VersionedTransaction
+                tx_bytes = base64.b64decode(tx_data)
+                tx = VersionedTransaction.from_bytes(tx_bytes)
+                if tx.signatures:
+                    nonce = f"solana:{str(tx.signatures[0])[:32]}"
+            except Exception:
+                nonce = None
+
+        if nonce is None:
+            nonce = f"{network}:{(signature or '')[:32]}"
 
         try:
             # Check if authorization exists and not settled
