@@ -1,6 +1,10 @@
 from django.urls import path
 
-from x402f.views import X402SettleView, X402VerifyView
+# Use multi-chain views for dynamic network support
+from x402f.views_multichain import X402SettleView, X402VerifyView
+
+# Legacy single-chain views (for reference)
+# from x402f.views import X402SettleView, X402VerifyView
 
 app_name = 'x402'
 

@@ -646,6 +646,37 @@ files = [
 ]
 
 [[package]]
+name = "construct"
+version = "2.10.70"
+description = "A powerful declarative symmetric parser/builder for binary data"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "construct-2.10.70-py3-none-any.whl", hash = "sha256:c80be81ef595a1a821ec69dc16099550ed22197615f4320b57cc9ce2a672cb30"},
+    {file = "construct-2.10.70.tar.gz", hash = "sha256:4d2472f9684731e58cc9c56c463be63baa1447d674e0d66aeb5627b22f512c29"},
+]
+
+[package.extras]
+extras = ["arrow", "cloudpickle", "cryptography", "lz4", "numpy", "ruamel.yaml"]
+
+[[package]]
+name = "construct-typing"
+version = "0.7.0"
+description = "Extension for the python package 'construct' that adds typing features"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "construct_typing-0.7.0-py3-none-any.whl", hash = "sha256:c92383c6e8e5d07ba25811c8d5163820458d821e73bb1006541f43f89788646c"},
+    {file = "construct_typing-0.7.0.tar.gz", hash = "sha256:71d110dedff39bd3b603c734077032a7065bc597a49db1f5b03a211d05dbac23"},
+]
+
+[package.dependencies]
+construct = "2.10.70"
+typing_extensions = ">=4.6.0"
+
+[[package]]
 name = "cytoolz"
 version = "1.1.0"
 description = "Cython implementation of Toolz: High performance functional utilities"
@@ -1547,6 +1578,18 @@ MarkupSafe = ">=2.0"
 
 [package.extras]
 i18n = ["Babel (>=2.7)"]
+
+[[package]]
+name = "jsonalias"
+version = "0.1.1"
+description = "A microlibrary that defines a Json type alias for Python."
+optional = false
+python-versions = ">=3.7,<4.0"
+groups = ["main"]
+files = [
+    {file = "jsonalias-0.1.1-py3-none-any.whl", hash = "sha256:a56d2888e6397812c606156504e861e8ec00e188005af149f003c787db3d3f18"},
+    {file = "jsonalias-0.1.1.tar.gz", hash = "sha256:64f04d935397d579fc94509e1fcb6212f2d081235d9d6395bd10baedf760a769"},
+]
 
 [[package]]
 name = "loguru"
@@ -2940,6 +2983,48 @@ files = [
 ]
 
 [[package]]
+name = "solana"
+version = "0.36.10"
+description = "Solana Python API"
+optional = false
+python-versions = "<4.0,>=3.9"
+groups = ["main"]
+files = [
+    {file = "solana-0.36.10-py3-none-any.whl", hash = "sha256:5b020352bcc21061d027801203e52d2fcbb624025eaf5adf4d9deb2bb0872114"},
+    {file = "solana-0.36.10.tar.gz", hash = "sha256:03641af70ea25648675e818b87f103466e12ffe726404e675077c403cc4057b5"},
+]
+
+[package.dependencies]
+construct-typing = ">=0.6.2,<0.8.0"
+httpx = ">=0.28.0"
+solders = ">=0.23,<0.28"
+typing-extensions = ">=4.2.0"
+websockets = ">=9.0,<=15.0.1"
+
+[[package]]
+name = "solders"
+version = "0.27.1"
+description = "Python bindings for Solana Rust tools"
+optional = false
+python-versions = "<4.0,>=3.8"
+groups = ["main"]
+files = [
+    {file = "solders-0.27.1-cp38-abi3-macosx_10_9_x86_64.macosx_11_0_arm64.macosx_10_9_universal2.whl", hash = "sha256:4dcd8e766bab24afbe9e0ae363d86f9810457e04b00c8a9149f69ca939ed587c"},
+    {file = "solders-0.27.1-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:5d87b145cc0129095f9cff8c7f28d2e910bc5b5a4cf257c263b08a4b95f111dd"},
+    {file = "solders-0.27.1-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6082bbe46b7b1b2b005d046011f89fcae75fc5ea4f1a0ef5c2e9dfb5fe7930ce"},
+    {file = "solders-0.27.1-cp38-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:ccb821c2e4af43d976f312086f248a67352b3986e5f4c87af41cfeac6d8b5683"},
+    {file = "solders-0.27.1-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:663a10566ae81f67c4515d4db5fbf51b735204741728c1a5cde11c4e019a51df"},
+    {file = "solders-0.27.1-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:d14f05a77dbbf7966fb26f255c81302e6127550bdb66c2fdc99f522043fdf376"},
+    {file = "solders-0.27.1-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:f778eeab411acec0a765a01c7b772f8eca8a8543d98276bd83cb826960da211b"},
+    {file = "solders-0.27.1-cp38-abi3-win_amd64.whl", hash = "sha256:f3b787c29570a46d219c7a67543d8b0fadc73abda346653aa20e8eccd839e78b"},
+    {file = "solders-0.27.1.tar.gz", hash = "sha256:7d8a24ad2f193afcdc02d6f3975917a7358b0f0ab7f4b3695b135ff2008222c8"},
+]
+
+[package.dependencies]
+jsonalias = "0.1.1"
+typing-extensions = ">=4.2.0"
+
+[[package]]
 name = "sqlparse"
 version = "0.5.3"
 description = "A non-validating SQL parser."
@@ -3597,4 +3682,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.12"
-content-hash = "6185e822a4ff87c20b5928e487bfd16fce5b9158e404886409033b22b27e1ebf"
+content-hash = "9db7374db31f9b64eedaf017ba4a26935fb9ed29f3e5d399207817783944defb"
