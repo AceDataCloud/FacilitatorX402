@@ -15,6 +15,7 @@ import base58
 import base64
 import json
 import time
+import hashlib
 from loguru import logger
 
 try:
@@ -76,6 +77,38 @@ class SolanaChainHandler(ChainHandler):
             return VersionedTransaction.from_bytes(transaction_bytes)
         except Exception as e:
             logger.error(f'Failed to deserialize transaction: {e}')
+            return None
+
+    @staticmethod
+    def _extract_transaction_b64(payload: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract base64-encoded transaction from a payment payload.
+
+        Accepts multiple wire formats:
+        - payload.payload.serializedTransaction (CDP / Solana docs)
+        - payload.payload.transaction (legacy/internal)
+        - payload.payload.payload (legacy/internal)
+        - payload.payload (string)
+        """
+        raw_payload = payload.get('payload')
+        if isinstance(raw_payload, dict):
+            return (
+                raw_payload.get('serializedTransaction')
+                or raw_payload.get('serialized_transaction')
+                or raw_payload.get('transaction')
+                or raw_payload.get('payload')
+            )
+        if isinstance(raw_payload, str):
+            return raw_payload
+        return None
+
+    @staticmethod
+    def _compute_nonce_from_tx_b64(transaction_b64: str) -> Optional[str]:
+        try:
+            tx_bytes = base64.b64decode(transaction_b64)
+            digest = hashlib.sha256(tx_bytes).hexdigest()[:32]
+            return f"solana:{digest}"
+        except Exception:
             return None
 
     def _verify_instruction_structure(
@@ -349,11 +382,7 @@ class SolanaChainHandler(ChainHandler):
                 )
 
             # Extract base64-encoded transaction
-            raw_payload = payload.get('payload')
-            if isinstance(raw_payload, dict):
-                transaction_b64 = raw_payload.get('transaction') or raw_payload.get('payload')
-            else:
-                transaction_b64 = raw_payload
+            transaction_b64 = self._extract_transaction_b64(payload)
             if not transaction_b64:
                 return VerificationResult(
                     is_valid=False,
@@ -398,16 +427,14 @@ class SolanaChainHandler(ChainHandler):
             # Extract payer (authority) from transfer details
             payer = transfer_details.get('authority', '')
 
-            # Ensure there is at least one signature (user)
-            if len(tx.signatures) < 1:
+            # Derive a stable nonce from the submitted transaction bytes.
+            # This avoids relying on signature ordering (fee payer is signer #0).
+            nonce = self._compute_nonce_from_tx_b64(transaction_b64)
+            if not nonce:
                 return VerificationResult(
                     is_valid=False,
-                    invalid_reason='No signatures found on transaction'
+                    invalid_reason='Unable to derive transaction nonce'
                 )
-
-            # Generate nonce from first signature
-            first_sig = tx.signatures[0]
-            nonce = f"solana:{str(first_sig)[:32]}"
 
             logger.info(f'Solana transaction verified: payer={payer}, amount={transfer_details["amount"]}')
 
@@ -476,11 +503,7 @@ class SolanaChainHandler(ChainHandler):
                 )
 
             # Extract partially-signed transaction from payload
-            raw_payload = payload.get('payload')
-            if isinstance(raw_payload, dict):
-                transaction_b64 = raw_payload.get('transaction') or raw_payload.get('payload')
-            else:
-                transaction_b64 = raw_payload
+            transaction_b64 = self._extract_transaction_b64(payload)
             if not transaction_b64:
                 return SettlementResult(
                     success=False,

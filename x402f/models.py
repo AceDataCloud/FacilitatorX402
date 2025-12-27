@@ -8,8 +8,9 @@ class X402Authorization(models.Model):
         SETTLED = 'settled', 'Settled'
 
     nonce = models.CharField(max_length=66, unique=True)
-    payer = models.CharField(max_length=42)
-    pay_to = models.CharField(max_length=42)
+    # Multi-chain support: EVM addresses (42 chars) + Solana (base58 ~44 chars) + future chains
+    payer = models.CharField(max_length=128)
+    pay_to = models.CharField(max_length=128)
     value = models.CharField(max_length=78)
     valid_after = models.DateTimeField()
     valid_before = models.DateTimeField()

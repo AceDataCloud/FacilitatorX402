@@ -3,6 +3,8 @@ Multi-chain X402 facilitator views using ChainHandler pattern.
 """
 from datetime import datetime, timezone as datetime_timezone
 from typing import Dict, Any
+import base64
+import hashlib
 
 from django.conf import settings
 from django.db import transaction, IntegrityError
@@ -81,6 +83,25 @@ def _get_chain_config(network: str) -> Dict[str, Any]:
         }
     else:
         raise X402FacilitatorError(f'Unsupported network: {network}')
+
+
+class X402SupportedView(APIView):
+    """
+    List supported payment kinds.
+
+    Mirrors the CDP facilitator `/supported` shape:
+    { "kinds": [ { "x402Version": 1, "scheme": "exact", "network": "base" }, ... ] }
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request, *args, **kwargs):  # noqa: ANN001
+        kinds = [
+            {'x402Version': 1, 'scheme': 'exact', 'network': network}
+            for network in ChainHandlerFactory.get_supported_networks()
+        ]
+        return Response({'kinds': kinds}, status=status.HTTP_200_OK)
 
 
 class X402VerifyView(APIView):
@@ -281,12 +302,9 @@ class X402SettleView(APIView):
         # For solana, derive nonce from first signature if not provided
         if nonce is None and str(network).lower().startswith('solana') and tx_data:
             try:
-                import base64
-                from solders.transaction import VersionedTransaction
                 tx_bytes = base64.b64decode(tx_data)
-                tx = VersionedTransaction.from_bytes(tx_bytes)
-                if tx.signatures:
-                    nonce = f"solana:{str(tx.signatures[0])[:32]}"
+                digest = hashlib.sha256(tx_bytes).hexdigest()[:32]
+                nonce = f"solana:{digest}"
             except Exception:
                 nonce = None
 
