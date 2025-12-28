@@ -22,7 +22,8 @@ class X402Authorization(models.Model):
         choices=Status.choices,
         default=Status.VERIFIED,
     )
-    transaction_hash = models.CharField(max_length=66, blank=True, null=True)
+    # EVM tx hash is 66 chars (0x + 64 hex); Solana signature is base58 (~88 chars).
+    transaction_hash = models.CharField(max_length=128, blank=True, null=True)
     settled_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -169,7 +169,8 @@ class X402VerifyView(APIView):
             nonce = result.details.get('nonce') if result.details else payload.get(
                 'payload', {}).get('nonce')
             # Always capture signature (top-level or nested) for storage/fallback
-            signature = payload.get('signature') or payload.get('payload', {}).get('signature', '')
+            signature = payload.get('signature') or payload.get(
+                'payload', {}).get('signature', '')
             if not nonce:
                 # Try to get from transaction data
                 tx_data = payload.get('payload', {}).get('transaction', {})
@@ -286,10 +287,12 @@ class X402SettleView(APIView):
 
         # Extract nonce from payload, handling both EVM and Solana shapes
         raw_payload = payload.get('payload')
-        signature = payload.get('signature') or (raw_payload.get('signature') if isinstance(raw_payload, dict) else '')
+        signature = payload.get('signature') or (raw_payload.get(
+            'signature') if isinstance(raw_payload, dict) else '')
 
         nonce = None
-        auth = raw_payload.get('authorization') if isinstance(raw_payload, dict) else {}
+        auth = raw_payload.get('authorization') if isinstance(
+            raw_payload, dict) else {}
         if isinstance(raw_payload, dict):
             nonce = raw_payload.get('nonce') or (auth or {}).get('nonce')
             tx_data = raw_payload.get('transaction')
@@ -341,7 +344,7 @@ class X402SettleView(APIView):
                 result = handler.settle_payment(payload, requirements)
 
                 if not result.success:
-                    logger.error(
+                    logger.exception(
                         'x402 settlement failed for network {}: {}',
                         network,
                         result.error_reason

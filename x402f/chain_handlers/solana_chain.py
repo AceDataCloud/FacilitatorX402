@@ -518,9 +518,20 @@ class SolanaChainHandler(ChainHandler):
                     error_reason='Failed to deserialize transaction'
                 )
 
-            # Attempt to sign as fee payer
+            # Sign as fee payer (signature index 0) for VersionedTransaction.
             try:
-                tx.sign([facilitator_keypair])
+                message_bytes = bytes(tx.message)
+                fee_payer_sig = facilitator_keypair.sign_message(message_bytes)
+                required = int(tx.message.header.num_required_signatures)
+                signatures = list(tx.signatures)
+                if len(signatures) < required:
+                    signatures.extend([SolSignature.default()] * (required - len(signatures)))
+                if len(signatures) != required:
+                    signatures = signatures[:required]
+                if required <= 0:
+                    return SettlementResult(success=False, error_reason='Invalid signature header')
+                signatures[0] = fee_payer_sig
+                tx = VersionedTransaction.populate(tx.message, signatures)
             except Exception as exc:
                 logger.error(f'Failed to sign solana transaction: {exc}')
                 return SettlementResult(
@@ -530,10 +541,30 @@ class SolanaChainHandler(ChainHandler):
 
             # Submit transaction
             try:
-                tx_response = client.send_transaction(
-                    tx,
-                    opts=TxOpts(skip_preflight=False, skip_confirmation=False)
-                )
+                try:
+                    tx_response = client.send_raw_transaction(
+                        bytes(tx),
+                        opts=TxOpts(
+                            skip_preflight=False,
+                            skip_confirmation=False,
+                            max_retries=3,
+                            preflight_commitment=Confirmed,
+                        ),
+                    )
+                except Exception as exc:
+                    # Public Solana RPC endpoints can be slightly out-of-sync; if preflight
+                    # rejects a brand-new blockhash, retry without preflight.
+                    msg = str(exc)
+                    if 'Blockhash not found' not in msg and 'BlockhashNotFound' not in msg:
+                        raise
+                    tx_response = client.send_raw_transaction(
+                        bytes(tx),
+                        opts=TxOpts(
+                            skip_preflight=True,
+                            skip_confirmation=False,
+                            max_retries=3,
+                        ),
+                    )
             except Exception as exc:
                 return SettlementResult(
                     success=False,
@@ -546,8 +577,8 @@ class SolanaChainHandler(ChainHandler):
             # Wait for confirmation (best effort)
             try:
                 client.confirm_transaction(
-                    tx_hash,
-                    commitment=Confirmed
+                    SolSignature.from_string(tx_hash),
+                    commitment=Confirmed,
                 )
             except Exception as e:
                 logger.warning(f'Confirmation timeout: {e}')
