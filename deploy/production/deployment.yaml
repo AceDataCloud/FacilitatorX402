@@ -58,22 +58,40 @@ spec:
                   key: PGSQL_USER
                   name: pgsql
                   optional: false
-            - name: X402_RPC_URL
+            - name: X402_BASE_RPC_URL
               valueFrom:
                 secretKeyRef:
-                  key: RPC_URL
+                  key: BASE_RPC_URL
                   name: x402
                   optional: false
-            - name: X402_SIGNER_PRIVATE_KEY
+            - name: X402_BASE_SIGNER_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
-                  key: SIGNER_PRIVATE_KEY
+                  key: BASE_SIGNER_PRIVATE_KEY
                   name: x402
                   optional: false
-            - name: X402_SIGNER_ADDRESS
+            - name: X402_BASE_SIGNER_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  key: SIGNER_ADDRESS
+                  key: BASE_SIGNER_ADDRESS
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_RPC_URL
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_SIGNER_PRIVATE_KEY
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_SIGNER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_SIGNER_ADDRESS
                   name: x402
                   optional: false
             - name: X402_GAS_LIMIT
