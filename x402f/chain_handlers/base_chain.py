@@ -37,7 +37,6 @@ class BaseChainHandler(ChainHandler):
     """Handler for Base (Ethereum L2) blockchain."""
 
     CHAIN_ID = 8453  # Base mainnet
-    USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)

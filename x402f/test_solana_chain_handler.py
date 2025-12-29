@@ -1,25 +1,20 @@
 import unittest
 
+from solders.pubkey import Pubkey
+from spl.memo.constants import MEMO_PROGRAM_ID
+from spl.token.instructions import get_associated_token_address
 
-try:
-    from solders.pubkey import Pubkey
-    from spl.memo.constants import MEMO_PROGRAM_ID
-    from spl.token.instructions import get_associated_token_address
+from x402f.chain_handlers.solana_chain import (
+    SolanaChainHandler,
+    COMPUTE_BUDGET_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_LEDGER_PROGRAM_ID,
+)
 
-    from x402f.chain_handlers.solana_chain import (
-        SolanaChainHandler,
-        COMPUTE_BUDGET_PROGRAM_ID,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-        TOKEN_LEDGER_PROGRAM_ID,
-    )
-
-    SOLANA_DEPS_AVAILABLE = True
-except Exception:
-    SOLANA_DEPS_AVAILABLE = False
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 
-@unittest.skipUnless(SOLANA_DEPS_AVAILABLE, "Solana dependencies are not installed")
 class SolanaInstructionStructureTests(unittest.TestCase):
     def _make_handler(self) -> "SolanaChainHandler":
         return SolanaChainHandler(
@@ -46,7 +41,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         handler = self._make_handler()
 
         pay_to = Pubkey.new_unique()
-        mint = Pubkey.from_string(handler.USDC_MINT)
+        mint = Pubkey.from_string(USDC_MINT)
         dest = get_associated_token_address(pay_to, mint)
         source = Pubkey.new_unique()
         authority = Pubkey.new_unique()
@@ -85,7 +80,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
 
         requirements = {
             "maxAmountRequired": str(amount),
-            "asset": handler.USDC_MINT,
+            "asset": USDC_MINT,
             "payTo": str(pay_to),
         }
 
@@ -100,7 +95,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         handler = self._make_handler()
 
         pay_to = Pubkey.new_unique()
-        mint = Pubkey.from_string(handler.USDC_MINT)
+        mint = Pubkey.from_string(USDC_MINT)
         dest = get_associated_token_address(pay_to, mint)
         source = Pubkey.new_unique()
         authority = Pubkey.new_unique()
@@ -138,7 +133,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
 
         requirements = {
             "maxAmountRequired": str(amount),
-            "asset": handler.USDC_MINT,
+            "asset": USDC_MINT,
             "payTo": str(pay_to),
         }
 
@@ -153,7 +148,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         handler = self._make_handler()
 
         pay_to = Pubkey.new_unique()
-        mint = Pubkey.from_string(handler.USDC_MINT)
+        mint = Pubkey.from_string(USDC_MINT)
         dest = get_associated_token_address(pay_to, mint)
         source = Pubkey.new_unique()
         authority = Pubkey.new_unique()
@@ -193,7 +188,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
 
         requirements = {
             "maxAmountRequired": str(amount),
-            "asset": handler.USDC_MINT,
+            "asset": USDC_MINT,
             "payTo": str(pay_to),
         }
 

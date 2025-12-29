@@ -13,40 +13,40 @@ The x402 protocol for Solana (SVM) uses partially-signed transactions:
 from typing import Dict, Any, Optional, Tuple
 import base58
 import base64
-import json
-import time
 import hashlib
 from loguru import logger
 
-try:
-    from solders.pubkey import Pubkey
-    from solders.keypair import Keypair
-    from solders.signature import Signature as SolSignature
-    from solders.transaction import VersionedTransaction
-    from solders.instruction import Instruction, CompiledInstruction
-    from solders.message import MessageV0
-    from solders.hash import Hash as Blockhash
-    from solana.rpc.api import Client
-    from solana.rpc.commitment import Confirmed
-    from solana.rpc.types import TxOpts
-    from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
-    from spl.token.instructions import get_associated_token_address
-    SOLANA_AVAILABLE = True
-except ImportError:
-    SOLANA_AVAILABLE = False
-    logger.warning("solana-py not installed. Solana chain handler will not work.")
+from solders.pubkey import Pubkey
+from solders.keypair import Keypair
+from solders.signature import Signature as SolSignature
+from solders.transaction import VersionedTransaction
+from solders.instruction import CompiledInstruction
+from solana.rpc.api import Client
+from solana.rpc.commitment import Confirmed
+from solana.rpc.types import TxOpts
+from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
+from spl.token.instructions import get_associated_token_address
 
 from .base import ChainHandler, VerificationResult, SettlementResult
 
 
 # Solana program IDs
-COMPUTE_BUDGET_PROGRAM_ID = Pubkey.from_string("ComputeBudget111111111111111111111111111111")
-TOKEN_2022_PROGRAM_ID = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-MEMO_PROGRAM_ID_V1 = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
-MEMO_PROGRAM_ID_V2 = Pubkey.from_string("Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo")
-MEMO_PROGRAM_IDS = {str(MEMO_PROGRAM_ID_V1), str(MEMO_PROGRAM_ID_V2)}
+COMPUTE_BUDGET_PROGRAM_ID = Pubkey.from_string(
+    "ComputeBudget111111111111111111111111111111"
+)
+TOKEN_2022_PROGRAM_ID = Pubkey.from_string(
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+)
+MEMO_PROGRAM_ID_V1 = Pubkey.from_string(
+    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+)
+MEMO_PROGRAM_ID_V2 = Pubkey.from_string(
+    "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo"
+)
+MEMO_PROGRAM_IDS = {MEMO_PROGRAM_ID_V1, MEMO_PROGRAM_ID_V2}
 TOKEN_LEDGER_PROGRAM_ID = Pubkey.from_string(
-    "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95")
+    "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95"
+)
 
 
 class SolanaChainHandler(ChainHandler):
@@ -57,7 +57,6 @@ class SolanaChainHandler(ChainHandler):
     https://github.com/coinbase/x402/blob/main/specs/schemes/exact/scheme_exact_svm.md
     """
 
-    USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
     CLUSTER = 'mainnet-beta'
 
     # x402 spec: compute unit price must not exceed 5 lamports
@@ -169,9 +168,8 @@ class SolanaChainHandler(ChainHandler):
         for idx in range(2, len(instructions)):
             instruction = instructions[idx]
             program_id = message.account_keys[instruction.program_id_index]
-            program_id_str = str(program_id)
 
-            if program_id_str in MEMO_PROGRAM_IDS:
+            if program_id in MEMO_PROGRAM_IDS:
                 continue
 
             if self._is_ata_create_instruction(message, instruction):
@@ -201,14 +199,14 @@ class SolanaChainHandler(ChainHandler):
 
             allowed_programs = sorted({
                 str(ASSOCIATED_TOKEN_PROGRAM_ID),
-                *MEMO_PROGRAM_IDS,
+                *(str(pid) for pid in MEMO_PROGRAM_IDS),
                 str(TOKEN_LEDGER_PROGRAM_ID),
                 str(TOKEN_PROGRAM_ID),
                 str(TOKEN_2022_PROGRAM_ID),
             })
             return (
                 False,
-                f'Unexpected instruction at index {idx}: program_id={program_id_str} (allowed={allowed_programs})',
+                f'Unexpected instruction at index {idx}: program_id={str(program_id)} (allowed={allowed_programs})',
                 None,
             )
 
@@ -307,7 +305,7 @@ class SolanaChainHandler(ChainHandler):
             authority = message.account_keys[authority_idx]
 
             # Verify mint matches requirements
-            required_asset = requirements.get('asset', self.USDC_MINT)
+            required_asset = requirements.get('asset')
             if str(mint) != required_asset:
                 logger.error(f'Mint mismatch: {mint} != {required_asset}')
                 return None
@@ -375,12 +373,6 @@ class SolanaChainHandler(ChainHandler):
             "payload": "<base64-encoded serialized partially-signed transaction>"
         }
         """
-        if not SOLANA_AVAILABLE:
-            return VerificationResult(
-                is_valid=False,
-                invalid_reason='Solana library not installed'
-            )
-
         try:
             if not isinstance(requirements, dict):
                 return VerificationResult(
@@ -528,12 +520,6 @@ class SolanaChainHandler(ChainHandler):
         3. Submit to Solana network
         4. Wait for confirmation
         """
-        if not SOLANA_AVAILABLE:
-            return SettlementResult(
-                success=False,
-                error_reason='Solana library not installed'
-            )
-
         try:
             # Get configuration
             rpc_url = self.config.get('rpc_url', 'https://api.mainnet-beta.solana.com')
@@ -651,7 +637,7 @@ class SolanaChainHandler(ChainHandler):
                 transaction_hash=tx_hash,
                 payer=payer,
                 details={
-                    'mint': requirements.get('asset', self.USDC_MINT),
+                    'mint': requirements.get('asset'),
                 }
             )
 
