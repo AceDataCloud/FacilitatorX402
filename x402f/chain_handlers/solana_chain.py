@@ -45,6 +45,8 @@ TOKEN_2022_PROGRAM_ID = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCX
 MEMO_PROGRAM_ID_V1 = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
 MEMO_PROGRAM_ID_V2 = Pubkey.from_string("Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo")
 MEMO_PROGRAM_IDS = {str(MEMO_PROGRAM_ID_V1), str(MEMO_PROGRAM_ID_V2)}
+TOKEN_LEDGER_PROGRAM_ID = Pubkey.from_string(
+    "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95")
 
 
 class SolanaChainHandler(ChainHandler):
@@ -161,6 +163,7 @@ class SolanaChainHandler(ChainHandler):
         transfer_details: Optional[Dict[str, Any]] = None
         transfer_index: Optional[int] = None
         ata_indices: list[int] = []
+        token_ledger_indices: list[int] = []
 
         # Remaining instructions: memo/ata/transferchecked (exactly one transferchecked)
         for idx in range(2, len(instructions)):
@@ -175,6 +178,18 @@ class SolanaChainHandler(ChainHandler):
                 ata_indices.append(idx)
                 continue
 
+            if program_id == TOKEN_LEDGER_PROGRAM_ID:
+                if transfer_details is None:
+                    return False, 'TokenLedger instruction must appear after TransferChecked', None
+                accounts = list(instruction.accounts)
+                if len(accounts) != 1:
+                    return False, 'TokenLedger instruction must have exactly one account', None
+                ledger_account = message.account_keys[accounts[0]]
+                if str(ledger_account) != transfer_details.get('source'):
+                    return False, 'TokenLedger account must match transfer source', None
+                token_ledger_indices.append(idx)
+                continue
+
             if program_id == TOKEN_PROGRAM_ID or program_id == TOKEN_2022_PROGRAM_ID:
                 if transfer_details is not None:
                     return False, 'Multiple TransferChecked instructions are not allowed', None
@@ -187,6 +202,7 @@ class SolanaChainHandler(ChainHandler):
             allowed_programs = sorted({
                 str(ASSOCIATED_TOKEN_PROGRAM_ID),
                 *MEMO_PROGRAM_IDS,
+                str(TOKEN_LEDGER_PROGRAM_ID),
                 str(TOKEN_PROGRAM_ID),
                 str(TOKEN_2022_PROGRAM_ID),
             })
@@ -202,6 +218,10 @@ class SolanaChainHandler(ChainHandler):
         # If present, ATA create must be before the transfer.
         if ata_indices and any(i > transfer_index for i in ata_indices):
             return False, 'ATA Create instruction must appear before TransferChecked', None
+
+        # TokenLedger (if present) must be after the transfer.
+        if token_ledger_indices and any(i < transfer_index for i in token_ledger_indices):
+            return False, 'TokenLedger instruction must appear after TransferChecked', None
 
         return True, None, transfer_details
 
