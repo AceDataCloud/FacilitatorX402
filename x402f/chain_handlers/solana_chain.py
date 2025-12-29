@@ -42,6 +42,9 @@ from .base import ChainHandler, VerificationResult, SettlementResult
 # Solana program IDs
 COMPUTE_BUDGET_PROGRAM_ID = Pubkey.from_string("ComputeBudget111111111111111111111111111111")
 TOKEN_2022_PROGRAM_ID = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+MEMO_PROGRAM_ID_V1 = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
+MEMO_PROGRAM_ID_V2 = Pubkey.from_string("Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo")
+MEMO_PROGRAM_IDS = {str(MEMO_PROGRAM_ID_V1), str(MEMO_PROGRAM_ID_V2)}
 
 
 class SolanaChainHandler(ChainHandler):
@@ -119,10 +122,13 @@ class SolanaChainHandler(ChainHandler):
         """
         Verify transaction has correct instruction structure per x402 spec.
 
-        Required instructions (in order):
-        1. ComputeBudget SetComputeUnitLimit
-        2. ComputeBudget SetComputeUnitPrice
-        3. SPL Token TransferChecked (or optionally ATA create before transfer)
+        Required instruction programs (in order):
+        1. ComputeBudget (SetComputeUnitLimit)
+        2. ComputeBudget (SetComputeUnitPrice)
+        Remaining instructions:
+        - SPL Token TransferChecked (required, exactly one)
+        - AssociatedTokenAccount create (optional)
+        - Memo (optional)
 
         Returns: (is_valid, error_reason, transfer_details)
         """
@@ -133,39 +139,69 @@ class SolanaChainHandler(ChainHandler):
         if len(instructions) < 3:
             return False, f'Expected at least 3 instructions, got {len(instructions)}', None
 
-        # Maximum 4 instructions (with optional ATA create)
-        if len(instructions) > 4:
-            return False, f'Expected at most 4 instructions, got {len(instructions)}', None
+        # Allow optional ATA create and/or Memo instructions around the transfer.
+        # We keep a small cap to avoid accepting arbitrary large instruction lists.
+        if len(instructions) > 6:
+            return False, f'Expected at most 6 instructions, got {len(instructions)}', None
 
-        idx = 0
-
-        # Instruction 0: ComputeBudget SetComputeUnitLimit
-        if not self._is_compute_budget_instruction(message, instructions[idx]):
+        # Instruction 0: ComputeBudget
+        if not self._is_compute_budget_instruction(message, instructions[0]):
             return False, 'First instruction must be ComputeBudget SetComputeUnitLimit', None
-        idx += 1
 
-        # Instruction 1: ComputeBudget SetComputeUnitPrice
-        compute_price_ix = instructions[idx]
-        if not self._is_compute_budget_instruction(message, compute_price_ix):
+        # Instruction 1: ComputeBudget
+        if not self._is_compute_budget_instruction(message, instructions[1]):
             return False, 'Second instruction must be ComputeBudget SetComputeUnitPrice', None
 
-        # Verify price <= 5 lamports per x402 spec
-        price = self._extract_compute_unit_price(compute_price_ix)
-        if price and price > self.MAX_COMPUTE_UNIT_PRICE:
-            return False, f'Compute unit price {price} exceeds maximum {self.MAX_COMPUTE_UNIT_PRICE}', None
-        idx += 1
+        # Verify price <= 5 lamports per x402 spec (price instruction can be in either slot).
+        for compute_ix in (instructions[0], instructions[1]):
+            price = self._extract_compute_unit_price(compute_ix)
+            if price and price > self.MAX_COMPUTE_UNIT_PRICE:
+                return False, f'Compute unit price {price} exceeds maximum {self.MAX_COMPUTE_UNIT_PRICE}', None
 
-        # Optional: ATA Create instruction
-        if len(instructions) == 4:
-            if not self._is_ata_create_instruction(message, instructions[idx]):
-                return False, 'Third instruction (if present) must be ATA Create', None
-            idx += 1
+        transfer_details: Optional[Dict[str, Any]] = None
+        transfer_index: Optional[int] = None
+        ata_indices: list[int] = []
 
-        # Final instruction: SPL Token TransferChecked
-        transfer_ix = instructions[idx]
-        transfer_details = self._verify_transfer_instruction(message, transfer_ix, requirements)
-        if not transfer_details:
-            return False, 'Invalid TransferChecked instruction', None
+        # Remaining instructions: memo/ata/transferchecked (exactly one transferchecked)
+        for idx in range(2, len(instructions)):
+            instruction = instructions[idx]
+            program_id = message.account_keys[instruction.program_id_index]
+            program_id_str = str(program_id)
+
+            if program_id_str in MEMO_PROGRAM_IDS:
+                continue
+
+            if self._is_ata_create_instruction(message, instruction):
+                ata_indices.append(idx)
+                continue
+
+            if program_id == TOKEN_PROGRAM_ID or program_id == TOKEN_2022_PROGRAM_ID:
+                if transfer_details is not None:
+                    return False, 'Multiple TransferChecked instructions are not allowed', None
+                transfer_details = self._verify_transfer_instruction(message, instruction, requirements)
+                if not transfer_details:
+                    return False, 'Invalid TransferChecked instruction', None
+                transfer_index = idx
+                continue
+
+            allowed_programs = sorted({
+                str(ASSOCIATED_TOKEN_PROGRAM_ID),
+                *MEMO_PROGRAM_IDS,
+                str(TOKEN_PROGRAM_ID),
+                str(TOKEN_2022_PROGRAM_ID),
+            })
+            return (
+                False,
+                f'Unexpected instruction at index {idx}: program_id={program_id_str} (allowed={allowed_programs})',
+                None,
+            )
+
+        if transfer_details is None or transfer_index is None:
+            return False, 'Missing TransferChecked instruction', None
+
+        # If present, ATA create must be before the transfer.
+        if ata_indices and any(i > transfer_index for i in ata_indices):
+            return False, 'ATA Create instruction must appear before TransferChecked', None
 
         return True, None, transfer_details
 
