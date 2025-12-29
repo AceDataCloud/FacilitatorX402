@@ -62,6 +62,23 @@ class SolanaChainHandler(ChainHandler):
     # x402 spec: compute unit price must not exceed 5 lamports
     MAX_COMPUTE_UNIT_PRICE = 5
 
+    @staticmethod
+    def _normalize_send_transaction_error(exc: Exception) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert noisy Solana RPC exceptions into a stable error code.
+
+        The raw exception string can be extremely verbose (simulation logs,
+        nested objects). We keep it in details for debugging while returning a
+        concise reason for end users.
+        """
+        raw = str(exc) or ''
+        lower = raw.lower()
+
+        if 'insufficient funds' in lower:
+            return 'INSUFFICIENT_FUNDS', {'raw_error': raw}
+
+        return 'SEND_TRANSACTION_FAILED', {'raw_error': raw}
+
     @property
     def chain_name(self) -> str:
         return 'solana'
@@ -608,10 +625,9 @@ class SolanaChainHandler(ChainHandler):
                         ),
                     )
             except Exception as exc:
-                return SettlementResult(
-                    success=False,
-                    error_reason=f'Send transaction failed: {exc}'
-                )
+                code, details = self._normalize_send_transaction_error(exc)
+                details.setdefault('stage', 'send_raw_transaction')
+                return SettlementResult(success=False, error_reason=code, details=details)
 
             tx_hash = str(getattr(tx_response, 'value', tx_response))
             logger.info(f'Solana settlement transaction submitted: {tx_hash}')
