@@ -295,7 +295,11 @@ class X402SettleView(APIView):
             raw_payload, dict) else {}
         if isinstance(raw_payload, dict):
             nonce = raw_payload.get('nonce') or (auth or {}).get('nonce')
-            tx_data = raw_payload.get('transaction')
+            tx_data = (
+                raw_payload.get('serializedTransaction')
+                or raw_payload.get('serialized_transaction')
+                or raw_payload.get('transaction')
+            )
             if nonce is None and isinstance(tx_data, dict):
                 nonce = tx_data.get('nonce')
         else:

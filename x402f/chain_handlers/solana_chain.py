@@ -14,6 +14,9 @@ from typing import Dict, Any, Optional, Tuple
 import base58
 import base64
 import hashlib
+import json
+import time
+import urllib.request
 from loguru import logger
 
 from solders.pubkey import Pubkey
@@ -122,6 +125,85 @@ class SolanaChainHandler(ChainHandler):
         if isinstance(raw_payload, str):
             return raw_payload
         return None
+
+    @staticmethod
+    def _extract_signature(payload: Dict[str, Any]) -> Optional[str]:
+        signature = payload.get('signature')
+        if isinstance(signature, str) and signature:
+            return signature
+        raw_payload = payload.get('payload')
+        if isinstance(raw_payload, dict):
+            nested = raw_payload.get('signature')
+            if isinstance(nested, str) and nested:
+                return nested
+        return None
+
+    def _fetch_transaction_b64_by_signature(
+        self,
+        signature: str,
+        *,
+        commitment: str = 'confirmed',
+    ) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        """
+        Fetch a transaction from the configured Solana RPC using the signature.
+
+        We use a raw JSON-RPC call (instead of solana-py response objects) to keep
+        parsing stable across library versions.
+        """
+        rpc_url = self.config.get('rpc_url', '') or 'https://api.mainnet-beta.solana.com'
+        last_error: Optional[Exception] = None
+
+        # In wallet sign-and-send flows, the signature is returned immediately but
+        # the transaction may not be available via `getTransaction` until it
+        # reaches at least the requested commitment. We retry briefly.
+        for attempt in range(6):
+            try:
+                body = json.dumps(
+                    {
+                        'jsonrpc': '2.0',
+                        'id': 1,
+                        'method': 'getTransaction',
+                        'params': [
+                            signature,
+                            {
+                                'encoding': 'base64',
+                                'commitment': commitment,
+                                'maxSupportedTransactionVersion': 0,
+                            },
+                        ],
+                    }
+                ).encode('utf-8')
+                req = urllib.request.Request(
+                    rpc_url,
+                    data=body,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST',
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode('utf-8') or '{}')
+            except Exception as exc:
+                last_error = exc
+                data = None
+
+            if isinstance(data, dict) and not data.get('error'):
+                result = data.get('result')
+                if isinstance(result, dict):
+                    raw_tx = result.get('transaction')
+                    transaction_b64: Optional[str] = None
+                    if isinstance(raw_tx, list) and raw_tx and isinstance(raw_tx[0], str):
+                        transaction_b64 = raw_tx[0]
+                    elif isinstance(raw_tx, str):
+                        transaction_b64 = raw_tx
+                    if transaction_b64:
+                        meta = result.get('meta')
+                        return transaction_b64, meta if isinstance(meta, dict) else None
+
+            if attempt < 5:
+                time.sleep(0.5)
+
+        if last_error is not None:
+            logger.warning(f'Failed to fetch Solana transaction by signature: {last_error}')
+        return None, None
 
     @staticmethod
     def _compute_nonce_from_tx_b64(transaction_b64: str) -> Optional[str]:
@@ -397,12 +479,13 @@ class SolanaChainHandler(ChainHandler):
                     invalid_reason='Invalid payment requirements'
                 )
 
-            facilitator_address = self.config.get('signer_address', '')
-            if not facilitator_address:
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason='Facilitator address not configured'
-                )
+            facilitator_address = self.config.get('signer_address', '') or ''
+            facilitator_pubkey: Optional[Pubkey] = None
+            if facilitator_address:
+                try:
+                    facilitator_pubkey = Pubkey.from_string(facilitator_address)
+                except Exception:
+                    facilitator_pubkey = None
 
             required_fields = ['payTo', 'asset', 'maxAmountRequired']
             missing = [f for f in required_fields if not requirements.get(f)]
@@ -439,20 +522,23 @@ class SolanaChainHandler(ChainHandler):
                     invalid_reason='Missing asset in requirements'
                 )
 
-            fee_payer_hint = (requirements.get('extra') or {}).get('feePayer')
-            if fee_payer_hint and fee_payer_hint != facilitator_address:
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason='Fee payer in requirements does not match facilitator configuration'
-                )
-
             # Extract base64-encoded transaction
             transaction_b64 = self._extract_transaction_b64(payload)
+            transaction_provided = bool(transaction_b64)
             if not transaction_b64:
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason='Missing transaction payload'
-                )
+                signature = self._extract_signature(payload)
+                if signature:
+                    transaction_b64, meta = self._fetch_transaction_b64_by_signature(signature)
+                    if meta and meta.get('err') is not None:
+                        return VerificationResult(
+                            is_valid=False,
+                            invalid_reason='On-chain transaction failed'
+                        )
+                if not transaction_b64:
+                    return VerificationResult(
+                        is_valid=False,
+                        invalid_reason='Missing transaction payload'
+                    )
 
             # Deserialize transaction
             tx = self._deserialize_transaction(transaction_b64)
@@ -462,39 +548,60 @@ class SolanaChainHandler(ChainHandler):
                     invalid_reason='Failed to deserialize transaction'
                 )
 
-            # Get facilitator pubkey
-            facilitator_pubkey = Pubkey.from_string(facilitator_address)
-
-            # Verify facilitator is the fee payer
             message = tx.message
             fee_payer = message.account_keys[0]  # First account is always fee payer
-            if fee_payer != facilitator_pubkey:
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason=f'Fee payer mismatch: expected {facilitator_pubkey}, got {fee_payer}'
-                )
+            is_facilitator_fee_payer = facilitator_pubkey is not None and fee_payer == facilitator_pubkey
 
-            # Verify facilitator does NOT appear in instruction accounts
-            if not self._verify_fee_payer_not_in_instructions(tx, facilitator_pubkey):
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason='Fee payer must not appear in instruction accounts'
-                )
+            transfer_details: Optional[Dict[str, Any]] = None
+            if is_facilitator_fee_payer:
+                fee_payer_hint = (requirements.get('extra') or {}).get('feePayer')
+                if fee_payer_hint and fee_payer_hint != facilitator_address:
+                    return VerificationResult(
+                        is_valid=False,
+                        invalid_reason='Fee payer in requirements does not match facilitator configuration'
+                    )
 
-            # Verify instruction structure
-            valid, error, transfer_details = self._verify_instruction_structure(tx, requirements)
-            if not valid:
-                return VerificationResult(
-                    is_valid=False,
-                    invalid_reason=error or 'Invalid instruction structure'
-                )
+                if not self._verify_fee_payer_not_in_instructions(tx, facilitator_pubkey):
+                    return VerificationResult(
+                        is_valid=False,
+                        invalid_reason='Fee payer must not appear in instruction accounts'
+                    )
+
+                valid, error, transfer_details = self._verify_instruction_structure(tx, requirements)
+                if not valid:
+                    return VerificationResult(
+                        is_valid=False,
+                        invalid_reason=error or 'Invalid instruction structure'
+                    )
+            else:
+                # Wallet fee payer mode (e.g. Phantom signAndSendTransaction):
+                # allow extra guard instructions injected by wallets, and only enforce that
+                # the transaction contains a TransferChecked matching requirements.
+                for instruction in message.instructions:
+                    program_id = message.account_keys[instruction.program_id_index]
+                    if program_id != TOKEN_PROGRAM_ID and program_id != TOKEN_2022_PROGRAM_ID:
+                        continue
+                    candidate = self._verify_transfer_instruction(message, instruction, requirements)
+                    if candidate:
+                        transfer_details = candidate
+                        break
+                if transfer_details is None:
+                    return VerificationResult(
+                        is_valid=False,
+                        invalid_reason='Missing matching TransferChecked instruction'
+                    )
 
             # Extract payer (authority) from transfer details
             payer = transfer_details.get('authority', '')
 
             # Derive a stable nonce from the submitted transaction bytes.
             # This avoids relying on signature ordering (fee payer is signer #0).
-            nonce = self._compute_nonce_from_tx_b64(transaction_b64)
+            if not transaction_provided:
+                signature = self._extract_signature(payload) or ''
+                network = str(requirements.get('network') or self.chain_name)
+                nonce = f"{network}:{signature[:32]}"
+            else:
+                nonce = self._compute_nonce_from_tx_b64(transaction_b64)
             if not nonce:
                 return VerificationResult(
                     is_valid=False,
@@ -540,16 +647,89 @@ class SolanaChainHandler(ChainHandler):
         try:
             # Get configuration
             rpc_url = self.config.get('rpc_url', 'https://api.mainnet-beta.solana.com')
-            signer_private_key = self.config.get('signer_private_key', '')
+            signer_private_key = self.config.get('signer_private_key', '') or ''
+            facilitator_address = self.config.get('signer_address', '') or ''
+            facilitator_pubkey: Optional[Pubkey] = None
+            if facilitator_address:
+                try:
+                    facilitator_pubkey = Pubkey.from_string(facilitator_address)
+                except Exception:
+                    facilitator_pubkey = None
+
+            # Connect to Solana
+            client = Client(rpc_url)
+
+            # Extract partially-signed transaction from payload
+            transaction_b64 = self._extract_transaction_b64(payload)
+            if not transaction_b64:
+                signature = self._extract_signature(payload)
+                if signature:
+                    transaction_b64, _meta = self._fetch_transaction_b64_by_signature(signature)
+                if not transaction_b64:
+                    return SettlementResult(
+                        success=False,
+                        error_reason='Missing transaction payload'
+                    )
+
+            # Deserialize transaction
+            tx = self._deserialize_transaction(transaction_b64)
+            if not tx:
+                return SettlementResult(
+                    success=False,
+                    error_reason='Failed to deserialize transaction'
+                )
+
+            message = tx.message
+            fee_payer = message.account_keys[0]
+            is_facilitator_fee_payer = facilitator_pubkey is not None and fee_payer == facilitator_pubkey
+
+            if not is_facilitator_fee_payer:
+                # Wallet fee payer mode: transaction is expected to already be submitted
+                # (e.g. Phantom signAndSendTransaction). We just confirm and return the signature.
+                tx_hash = self._extract_signature(payload)
+                if not tx_hash:
+                    try:
+                        tx_hash = str(tx.signatures[0])
+                    except Exception:
+                        tx_hash = None
+                if not tx_hash:
+                    return SettlementResult(
+                        success=False,
+                        error_reason='Missing transaction signature'
+                    )
+
+                try:
+                    client.confirm_transaction(
+                        SolSignature.from_string(tx_hash),
+                        commitment=Confirmed,
+                    )
+                except Exception as exc:
+                    logger.warning(f'Confirmation timeout (wallet mode): {exc}')
+
+                transfer_details: Optional[Dict[str, Any]] = None
+                for instruction in message.instructions:
+                    program_id = message.account_keys[instruction.program_id_index]
+                    if program_id != TOKEN_PROGRAM_ID and program_id != TOKEN_2022_PROGRAM_ID:
+                        continue
+                    candidate = self._verify_transfer_instruction(message, instruction, requirements)
+                    if candidate:
+                        transfer_details = candidate
+                        break
+
+                return SettlementResult(
+                    success=True,
+                    transaction_hash=tx_hash,
+                    payer=(transfer_details or {}).get('authority'),
+                    details={
+                        'mint': requirements.get('asset'),
+                    }
+                )
 
             if not signer_private_key:
                 return SettlementResult(
                     success=False,
                     error_reason='Solana signer private key not configured'
                 )
-
-            # Connect to Solana
-            client = Client(rpc_url)
 
             # Load facilitator keypair
             try:
@@ -559,22 +739,6 @@ class SolanaChainHandler(ChainHandler):
                 return SettlementResult(
                     success=False,
                     error_reason=f'Invalid signer private key: {e}'
-                )
-
-            # Extract partially-signed transaction from payload
-            transaction_b64 = self._extract_transaction_b64(payload)
-            if not transaction_b64:
-                return SettlementResult(
-                    success=False,
-                    error_reason='Missing transaction payload'
-                )
-
-            # Deserialize transaction
-            tx = self._deserialize_transaction(transaction_b64)
-            if not tx:
-                return SettlementResult(
-                    success=False,
-                    error_reason='Failed to deserialize transaction'
                 )
 
             # Sign as fee payer (signature index 0) for VersionedTransaction.
