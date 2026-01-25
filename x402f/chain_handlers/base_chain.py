@@ -360,22 +360,33 @@ class BaseChainHandler(ChainHandler):
 
             # Send transaction
             tx_hash = web3.eth.send_raw_transaction(raw_tx)
-            logger.info(f'Settlement transaction submitted: {tx_hash.hex()}')
+            tx_hash_hex = tx_hash.hex()
+            if not tx_hash_hex.startswith('0x'):
+                tx_hash_hex = '0x' + tx_hash_hex
+            logger.info(f'Settlement transaction submitted: {tx_hash_hex}')
 
             # Wait for confirmation
             receipt = web3.eth.wait_for_transaction_receipt(
                 tx_hash, timeout=timeout)
 
             if receipt.status != 1:
+                failed_tx_hash = tx_hash.hex()
+                if not failed_tx_hash.startswith('0x'):
+                    failed_tx_hash = '0x' + failed_tx_hash
                 return SettlementResult(
                     success=False,
-                    transaction_hash=tx_hash.hex(),
+                    transaction_hash=failed_tx_hash,
                     error_reason='Transaction reverted on-chain'
                 )
 
+            # Ensure tx_hash has 0x prefix
+            tx_hash_hex = tx_hash.hex()
+            if not tx_hash_hex.startswith('0x'):
+                tx_hash_hex = '0x' + tx_hash_hex
+
             return SettlementResult(
                 success=True,
-                transaction_hash=tx_hash.hex(),
+                transaction_hash=tx_hash_hex,
                 payer=self._normalize_address(authorization['from']),
                 details={
                     'block': receipt.blockNumber,
