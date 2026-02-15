@@ -5,11 +5,11 @@ from spl.memo.constants import MEMO_PROGRAM_ID
 from spl.token.instructions import get_associated_token_address
 
 from x402f.chain_handlers.solana_chain import (
-    SolanaChainHandler,
-    COMPUTE_BUDGET_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID,
+    COMPUTE_BUDGET_PROGRAM_ID,
     TOKEN_LEDGER_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    SolanaChainHandler,
 )
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -84,9 +84,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
             "payTo": str(pay_to),
         }
 
-        valid, error, transfer_details = handler._verify_instruction_structure(
-            tx, requirements
-        )
+        valid, error, transfer_details = handler._verify_instruction_structure(tx, requirements)
         self.assertTrue(valid)
         self.assertIsNone(error)
         self.assertIsNotNone(transfer_details)
@@ -137,9 +135,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
             "payTo": str(pay_to),
         }
 
-        valid, error, transfer_details = handler._verify_instruction_structure(
-            tx, requirements
-        )
+        valid, error, transfer_details = handler._verify_instruction_structure(tx, requirements)
         self.assertTrue(valid)
         self.assertIsNone(error)
         self.assertIsNotNone(transfer_details)
@@ -192,9 +188,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
             "payTo": str(pay_to),
         }
 
-        valid, error, transfer_details = handler._verify_instruction_structure(
-            tx, requirements
-        )
+        valid, error, transfer_details = handler._verify_instruction_structure(tx, requirements)
         self.assertFalse(valid)
         self.assertIsNotNone(error)
         self.assertIn("Unexpected instruction", error)

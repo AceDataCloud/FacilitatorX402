@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone as datetime_timezone
+from datetime import datetime
+from datetime import timezone as datetime_timezone
 from typing import Tuple
 
 from django.conf import settings
@@ -16,31 +17,29 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from web3 import HTTPProvider, Web3
-from web3.exceptions import ContractLogicError, BadFunctionCallOutput
-
+from web3.exceptions import BadFunctionCallOutput, ContractLogicError
 from x402.chains import get_chain_id
 from x402.types import PaymentPayload, PaymentRequirements
 
 from x402f.models import X402Authorization
 
-
 USDC_TRANSFER_WITH_AUTHORIZATION_ABI = [
     {
-        'inputs': [
-            {'internalType': 'address', 'name': 'from', 'type': 'address'},
-            {'internalType': 'address', 'name': 'to', 'type': 'address'},
-            {'internalType': 'uint256', 'name': 'value', 'type': 'uint256'},
-            {'internalType': 'uint256', 'name': 'validAfter', 'type': 'uint256'},
-            {'internalType': 'uint256', 'name': 'validBefore', 'type': 'uint256'},
-            {'internalType': 'bytes32', 'name': 'nonce', 'type': 'bytes32'},
-            {'internalType': 'uint8', 'name': 'v', 'type': 'uint8'},
-            {'internalType': 'bytes32', 'name': 'r', 'type': 'bytes32'},
-            {'internalType': 'bytes32', 'name': 's', 'type': 'bytes32'},
+        "inputs": [
+            {"internalType": "address", "name": "from", "type": "address"},
+            {"internalType": "address", "name": "to", "type": "address"},
+            {"internalType": "uint256", "name": "value", "type": "uint256"},
+            {"internalType": "uint256", "name": "validAfter", "type": "uint256"},
+            {"internalType": "uint256", "name": "validBefore", "type": "uint256"},
+            {"internalType": "bytes32", "name": "nonce", "type": "bytes32"},
+            {"internalType": "uint8", "name": "v", "type": "uint8"},
+            {"internalType": "bytes32", "name": "r", "type": "bytes32"},
+            {"internalType": "bytes32", "name": "s", "type": "bytes32"},
         ],
-        'name': 'transferWithAuthorization',
-        'outputs': [{'internalType': 'bool', 'name': '', 'type': 'bool'}],
-        'stateMutability': 'nonpayable',
-        'type': 'function',
+        "name": "transferWithAuthorization",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "nonpayable",
+        "type": "function",
     }
 ]
 
@@ -65,18 +64,18 @@ def _map_contract_logic_error(exc: ContractLogicError) -> str:
     expose a precise reason. We still try to surface common cases like
     insufficient balance.
     """
-    message = str(exc) or ''
+    message = str(exc) or ""
     lower = message.lower()
 
     # Typical ERC‑20 insufficient balance messages
-    if 'amount exceeds balance' in lower or 'insufficient balance' in lower:
-        return 'Payer has insufficient token balance for settlement.'
+    if "amount exceeds balance" in lower or "insufficient balance" in lower:
+        return "Payer has insufficient token balance for settlement."
 
     # Native token (gas) insufficiency on the facilitator signer
-    if 'insufficient funds' in lower:
-        return 'Facilitator signer has insufficient native balance to pay gas.'
+    if "insufficient funds" in lower:
+        return "Facilitator signer has insufficient native balance to pay gas."
 
-    return 'Settlement transaction reverted on-chain.'
+    return "Settlement transaction reverted on-chain."
 
 
 @dataclass(frozen=True)
@@ -96,46 +95,38 @@ def _normalize_address(address: str) -> str:
     try:
         return Web3.to_checksum_address(address)
     except ValueError as exc:
-        raise X402FacilitatorValidationError(
-            f'Invalid ethereum address: {address}'
-        ) from exc
+        raise X402FacilitatorValidationError(f"Invalid ethereum address: {address}") from exc
 
 
 def _normalize_nonce(nonce: str) -> Tuple[str, HexBytes]:
     try:
         nonce_bytes = HexBytes(nonce)
     except (ValueError, TypeError) as exc:
-        raise X402FacilitatorValidationError(
-            'Authorization nonce must be hex encoded.') from exc
+        raise X402FacilitatorValidationError("Authorization nonce must be hex encoded.") from exc
     if len(nonce_bytes) != 32:
-        raise X402FacilitatorValidationError(
-            'Authorization nonce must be 32 bytes.')
+        raise X402FacilitatorValidationError("Authorization nonce must be 32 bytes.")
     return nonce_bytes.hex(), nonce_bytes
 
 
 def _parse_payload(request_data: dict) -> Tuple[PaymentPayload, PaymentRequirements]:
     try:
-        payload = PaymentPayload.model_validate(request_data['paymentPayload'])
-        requirements = PaymentRequirements.model_validate(
-            request_data['paymentRequirements'])
+        payload = PaymentPayload.model_validate(request_data["paymentPayload"])
+        requirements = PaymentRequirements.model_validate(request_data["paymentRequirements"])
     except KeyError as exc:
-        raise X402FacilitatorValidationError(
-            f'Missing field: {exc.args[0]}') from exc
+        raise X402FacilitatorValidationError(f"Missing field: {exc.args[0]}") from exc
     except PydanticValidationError as exc:
-        logger.debug('pydantic validation failed: {}', exc)
-        raise X402FacilitatorValidationError(
-            'Invalid payment payload or requirements.') from exc
+        logger.debug("pydantic validation failed: {}", exc)
+        raise X402FacilitatorValidationError("Invalid payment payload or requirements.") from exc
     return payload, requirements
 
 
 def _build_typed_data(requirements: PaymentRequirements, payload: PaymentPayload) -> dict:
     authorization = payload.payload.authorization
     extra = requirements.extra or {}
-    domain_name = extra.get('name', '')
-    domain_version = extra.get('version', '')
+    domain_name = extra.get("name", "")
+    domain_version = extra.get("version", "")
     if not domain_name or not domain_version:
-        raise X402FacilitatorValidationError(
-            'Payment requirements missing token domain metadata.')
+        raise X402FacilitatorValidationError("Payment requirements missing token domain metadata.")
     try:
         chain_id = int(get_chain_id(str(requirements.network)))
     except ValueError as exc:
@@ -144,36 +135,36 @@ def _build_typed_data(requirements: PaymentRequirements, payload: PaymentPayload
     nonce_bytes = HexBytes(authorization.nonce)
 
     return {
-        'types': {
-            'EIP712Domain': [
-                {'name': 'name', 'type': 'string'},
-                {'name': 'version', 'type': 'string'},
-                {'name': 'chainId', 'type': 'uint256'},
-                {'name': 'verifyingContract', 'type': 'address'},
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
             ],
-            'TransferWithAuthorization': [
-                {'name': 'from', 'type': 'address'},
-                {'name': 'to', 'type': 'address'},
-                {'name': 'value', 'type': 'uint256'},
-                {'name': 'validAfter', 'type': 'uint256'},
-                {'name': 'validBefore', 'type': 'uint256'},
-                {'name': 'nonce', 'type': 'bytes32'},
+            "TransferWithAuthorization": [
+                {"name": "from", "type": "address"},
+                {"name": "to", "type": "address"},
+                {"name": "value", "type": "uint256"},
+                {"name": "validAfter", "type": "uint256"},
+                {"name": "validBefore", "type": "uint256"},
+                {"name": "nonce", "type": "bytes32"},
             ],
         },
-        'primaryType': 'TransferWithAuthorization',
-        'domain': {
-            'name': domain_name,
-            'version': domain_version,
-            'chainId': chain_id,
-            'verifyingContract': Web3.to_checksum_address(requirements.asset),
+        "primaryType": "TransferWithAuthorization",
+        "domain": {
+            "name": domain_name,
+            "version": domain_version,
+            "chainId": chain_id,
+            "verifyingContract": Web3.to_checksum_address(requirements.asset),
         },
-        'message': {
-            'from': _normalize_address(authorization.from_),
-            'to': _normalize_address(authorization.to),
-            'value': int(authorization.value),
-            'validAfter': int(authorization.valid_after),
-            'validBefore': int(authorization.valid_before),
-            'nonce': nonce_bytes,
+        "message": {
+            "from": _normalize_address(authorization.from_),
+            "to": _normalize_address(authorization.to),
+            "value": int(authorization.value),
+            "validAfter": int(authorization.valid_after),
+            "validBefore": int(authorization.valid_before),
+            "nonce": nonce_bytes,
         },
     }
 
@@ -182,14 +173,12 @@ def _recover_payer_address(typed_data: dict, signature: str) -> str:
     try:
         signable = encode_typed_data(full_message=typed_data)
     except Exception as exc:  # pragma: no cover - encode_typed_data raises many exception types
-        raise X402FacilitatorValidationError(
-            'Failed to encode authorization for signature recovery.') from exc
+        raise X402FacilitatorValidationError("Failed to encode authorization for signature recovery.") from exc
 
     try:
         recovered = Account.recover_message(signable, signature=signature)
     except Exception as exc:
-        raise X402FacilitatorValidationError(
-            'Unable to recover signer from signature.') from exc
+        raise X402FacilitatorValidationError("Unable to recover signer from signature.") from exc
 
     return _normalize_address(recovered)
 
@@ -197,56 +186,47 @@ def _recover_payer_address(typed_data: dict, signature: str) -> str:
 def _validate_payload(payload: PaymentPayload, requirements: PaymentRequirements) -> ValidatedAuthorization:
     authorization = payload.payload.authorization
     if not requirements.pay_to:
-        raise X402FacilitatorValidationError('Payment destination missing.')
+        raise X402FacilitatorValidationError("Payment destination missing.")
     if not requirements.asset:
-        raise X402FacilitatorValidationError('Payment asset missing.')
-    if not str(requirements.network or '').strip():
-        raise X402FacilitatorValidationError('Payment network missing.')
+        raise X402FacilitatorValidationError("Payment asset missing.")
+    if not str(requirements.network or "").strip():
+        raise X402FacilitatorValidationError("Payment network missing.")
 
     pay_to_requirement = _normalize_address(requirements.pay_to)
     authorization_to = _normalize_address(authorization.to)
     if authorization_to != pay_to_requirement:
-        raise X402FacilitatorValidationError(
-            'Authorization destination mismatch.')
+        raise X402FacilitatorValidationError("Authorization destination mismatch.")
 
     if requirements.max_amount_required is None:
-        raise X402FacilitatorValidationError(
-            'Payment requirements missing max amount.')
+        raise X402FacilitatorValidationError("Payment requirements missing max amount.")
     try:
         max_amount = int(requirements.max_amount_required)
     except (TypeError, ValueError) as exc:
-        raise X402FacilitatorValidationError(
-            'Invalid max amount in payment requirements.') from exc
+        raise X402FacilitatorValidationError("Invalid max amount in payment requirements.") from exc
     try:
         value = int(authorization.value)
     except (TypeError, ValueError) as exc:
-        raise X402FacilitatorValidationError(
-            'Authorization value must be an integer.') from exc
+        raise X402FacilitatorValidationError("Authorization value must be an integer.") from exc
     if value <= 0:
-        raise X402FacilitatorValidationError(
-            'Authorization value must be positive.')
+        raise X402FacilitatorValidationError("Authorization value must be positive.")
     if value > max_amount:
-        raise X402FacilitatorValidationError(
-            'Authorization value exceeds the required cap.')
+        raise X402FacilitatorValidationError("Authorization value exceeds the required cap.")
 
     now_ts = int(timezone.now().timestamp())
     try:
         valid_after = int(authorization.valid_after)
         valid_before = int(authorization.valid_before)
     except (TypeError, ValueError) as exc:
-        raise X402FacilitatorValidationError(
-            'Authorization validity window must be integers.') from exc
+        raise X402FacilitatorValidationError("Authorization validity window must be integers.") from exc
 
     if valid_before <= now_ts:
-        raise X402FacilitatorValidationError(
-            'Authorization window has expired.')
+        raise X402FacilitatorValidationError("Authorization window has expired.")
     if valid_after > now_ts:
-        raise X402FacilitatorValidationError('Authorization not yet valid.')
+        raise X402FacilitatorValidationError("Authorization not yet valid.")
 
     signature = payload.payload.signature
     if not signature:
-        raise X402FacilitatorValidationError(
-            'Authorization signature missing.')
+        raise X402FacilitatorValidationError("Authorization signature missing.")
 
     nonce_hex, _ = _normalize_nonce(authorization.nonce)
 
@@ -254,8 +234,7 @@ def _validate_payload(payload: PaymentPayload, requirements: PaymentRequirements
     payer = _recover_payer_address(typed_data, signature)
 
     if payer.lower() != authorization.from_.lower():
-        raise X402FacilitatorValidationError(
-            'Signature does not match authorization originator.')
+        raise X402FacilitatorValidationError("Signature does not match authorization originator.")
 
     return ValidatedAuthorization(
         payload=payload,
@@ -274,11 +253,9 @@ def _signature_to_components(signature: str) -> Tuple[int, bytes, bytes]:
     try:
         signature_bytes = HexBytes(signature)
     except (ValueError, TypeError) as exc:
-        raise X402FacilitatorValidationError(
-            'Invalid authorization signature.') from exc
+        raise X402FacilitatorValidationError("Invalid authorization signature.") from exc
     if len(signature_bytes) != 65:
-        raise X402FacilitatorValidationError(
-            'Authorization signature must be 65 bytes.')
+        raise X402FacilitatorValidationError("Authorization signature must be 65 bytes.")
 
     r = signature_bytes[:32]
     s = signature_bytes[32:64]
@@ -289,34 +266,31 @@ def _signature_to_components(signature: str) -> Tuple[int, bytes, bytes]:
 
 
 def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
-    rpc_url = getattr(settings, 'X402_RPC_URL', '')
-    private_key = getattr(settings, 'X402_SIGNER_PRIVATE_KEY', '')
-    configured_address = getattr(settings, 'X402_SIGNER_ADDRESS', '')
-    timeout = getattr(settings, 'X402_TX_TIMEOUT_SECONDS', 120)
-    gas_limit = getattr(settings, 'X402_GAS_LIMIT', 250000)
-    max_fee = getattr(settings, 'X402_MAX_FEE_PER_GAS_WEI', 0)
-    max_priority_fee = getattr(
-        settings, 'X402_MAX_PRIORITY_FEE_PER_GAS_WEI', 0)
+    rpc_url = getattr(settings, "X402_RPC_URL", "")
+    private_key = getattr(settings, "X402_SIGNER_PRIVATE_KEY", "")
+    configured_address = getattr(settings, "X402_SIGNER_ADDRESS", "")
+    timeout = getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120)
+    gas_limit = getattr(settings, "X402_GAS_LIMIT", 250000)
+    max_fee = getattr(settings, "X402_MAX_FEE_PER_GAS_WEI", 0)
+    max_priority_fee = getattr(settings, "X402_MAX_PRIORITY_FEE_PER_GAS_WEI", 0)
 
     if not rpc_url:
-        raise X402FacilitatorError('X402_RPC_URL is not configured.')
+        raise X402FacilitatorError("X402_RPC_URL is not configured.")
     if not private_key:
-        raise X402FacilitatorError(
-            'X402_SIGNER_PRIVATE_KEY is not configured.')
+        raise X402FacilitatorError("X402_SIGNER_PRIVATE_KEY is not configured.")
 
     web3 = Web3(HTTPProvider(rpc_url))
     if not web3.is_connected():
-        raise X402FacilitatorError(
-            'Unable to connect to configured RPC endpoint.')
+        raise X402FacilitatorError("Unable to connect to configured RPC endpoint.")
 
     account = web3.eth.account.from_key(private_key)
     signer_address = _normalize_address(configured_address or account.address)
 
     asset_address = _normalize_address(data.requirements.asset)
     logger.debug(
-        'x402 settlement starting: network={} chain_id={} asset={} signer={} payer={} pay_to={} value={} valid_after={} valid_before={}',
+        "x402 settlement starting: network={} chain_id={} asset={} signer={} payer={} pay_to={} value={} valid_after={} valid_before={}",
         str(data.requirements.network),
-        getattr(web3.eth, 'chain_id', None),
+        getattr(web3.eth, "chain_id", None),
         asset_address,
         signer_address,
         data.payer,
@@ -349,22 +323,22 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
 
     # Pre-flight simulation to surface clearer on-chain revert reasons
     try:
-        transfer_fn.call({'from': signer_address})
+        transfer_fn.call({"from": signer_address})
     except ContractLogicError as exc:
         code_size = None
         try:
             code = web3.eth.get_code(asset_address)
-            code_size = len(code or b'')
+            code_size = len(code or b"")
         except Exception as code_exc:  # pragma: no cover - diagnostics only
             logger.warning(
-                'x402 unable to fetch token bytecode for {}: {}',
+                "x402 unable to fetch token bytecode for {}: {}",
                 asset_address,
                 code_exc,
             )
 
         friendly = _map_contract_logic_error(exc)
         logger.error(
-            'x402 settlement simulation reverted for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}',
+            "x402 settlement simulation reverted for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}",
             asset_address,
             code_size,
             str(data.requirements.network),
@@ -384,16 +358,16 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
         code_size = None
         try:
             code = web3.eth.get_code(asset_address)
-            code_size = len(code or b'')
+            code_size = len(code or b"")
         except Exception as code_exc:  # pragma: no cover - diagnostics only
             logger.warning(
-                'x402 unable to fetch token bytecode for {}: {}',
+                "x402 unable to fetch token bytecode for {}: {}",
                 asset_address,
                 code_exc,
             )
 
         logger.warning(
-            'x402 settlement simulation returned empty data for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}; continuing without simulation.',
+            "x402 settlement simulation returned empty data for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}; continuing without simulation.",
             asset_address,
             code_size,
             str(data.requirements.network),
@@ -407,49 +381,43 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
         )
 
     try:
-        estimated_gas = transfer_fn.estimate_gas({'from': signer_address})
+        estimated_gas = transfer_fn.estimate_gas({"from": signer_address})
     except Exception as exc:  # pragma: no cover - estimation often fails in tests
-        logger.debug(
-            'Gas estimation failed, falling back to configured gas limit: {}', exc)
+        logger.debug("Gas estimation failed, falling back to configured gas limit: {}", exc)
         estimated_gas = gas_limit
 
     tx_params = {
-        'chainId': int(get_chain_id(str(data.requirements.network))),
-        'from': signer_address,
-        'nonce': web3.eth.get_transaction_count(signer_address),
-        'gas': max(estimated_gas, gas_limit),
+        "chainId": int(get_chain_id(str(data.requirements.network))),
+        "from": signer_address,
+        "nonce": web3.eth.get_transaction_count(signer_address),
+        "gas": max(estimated_gas, gas_limit),
     }
 
     if max_fee and max_priority_fee:
-        tx_params['maxFeePerGas'] = int(max_fee)
-        tx_params['maxPriorityFeePerGas'] = int(max_priority_fee)
+        tx_params["maxFeePerGas"] = int(max_fee)
+        tx_params["maxPriorityFeePerGas"] = int(max_priority_fee)
     else:
-        tx_params['gasPrice'] = web3.eth.gas_price
+        tx_params["gasPrice"] = web3.eth.gas_price
 
     transaction = transfer_fn.build_transaction(tx_params)
-    signed = web3.eth.account.sign_transaction(
-        transaction, private_key=private_key)
+    signed = web3.eth.account.sign_transaction(transaction, private_key=private_key)
 
-    raw_tx = getattr(signed, 'rawTransaction', None)
+    raw_tx = getattr(signed, "rawTransaction", None)
     if raw_tx is None:
-        raw_tx = getattr(signed, 'raw_transaction', None)
+        raw_tx = getattr(signed, "raw_transaction", None)
     if raw_tx is None:
-        raise X402FacilitatorError(
-            'Signer returned unexpected transaction encoding.')
+        raise X402FacilitatorError("Signer returned unexpected transaction encoding.")
 
     tx_hash = web3.eth.send_raw_transaction(raw_tx)
-    logger.debug(
-        'Submitted transferWithAuthorization transaction: {}', tx_hash.hex())
+    logger.debug("Submitted transferWithAuthorization transaction: {}", tx_hash.hex())
 
     try:
-        receipt = web3.eth.wait_for_transaction_receipt(
-            tx_hash, timeout=timeout)
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
     except Exception as exc:
-        raise X402FacilitatorError(
-            'Timed out waiting for settlement transaction.') from exc
+        raise X402FacilitatorError("Timed out waiting for settlement transaction.") from exc
 
     if receipt.status != 1:
-        raise X402FacilitatorError('Settlement transaction reverted on-chain.')
+        raise X402FacilitatorError("Settlement transaction reverted on-chain.")
 
     return tx_hash.hex()
 
@@ -463,31 +431,29 @@ class X402VerifyView(APIView):
             payload, requirements = _parse_payload(request.data)
             validated = _validate_payload(payload, requirements)
         except X402FacilitatorValidationError as exc:
-            logger.info('x402 verification failed: {}', exc.message)
+            logger.info("x402 verification failed: {}", exc.message)
             return Response(
                 {
-                    'isValid': False,
-                    'invalidReason': exc.message,
-                    'payer': None,
+                    "isValid": False,
+                    "invalidReason": exc.message,
+                    "payer": None,
                 },
                 status=status.HTTP_200_OK,
             )
         except X402FacilitatorError as exc:
-            logger.error('x402 verification misconfiguration: {}', exc)
+            logger.error("x402 verification misconfiguration: {}", exc)
             return Response(
                 {
-                    'isValid': False,
-                    'invalidReason': 'Facilitator misconfiguration.',
-                    'payer': None,
+                    "isValid": False,
+                    "invalidReason": "Facilitator misconfiguration.",
+                    "payer": None,
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         try:
-            valid_after_dt = datetime.fromtimestamp(
-                validated.valid_after_ts, tz=datetime_timezone.utc)
-            valid_before_dt = datetime.fromtimestamp(
-                validated.valid_before_ts, tz=datetime_timezone.utc)
+            valid_after_dt = datetime.fromtimestamp(validated.valid_after_ts, tz=datetime_timezone.utc)
+            valid_before_dt = datetime.fromtimestamp(validated.valid_before_ts, tz=datetime_timezone.utc)
 
             with transaction.atomic():
                 record = X402Authorization(
@@ -498,31 +464,27 @@ class X402VerifyView(APIView):
                     valid_after=valid_after_dt,
                     valid_before=valid_before_dt,
                     signature=validated.signature,
-                    payment_requirements=validated.requirements.model_dump(
-                        by_alias=True, exclude_none=True),
-                    payment_payload=validated.payload.model_dump(
-                        by_alias=True, exclude_none=True),
+                    payment_requirements=validated.requirements.model_dump(by_alias=True, exclude_none=True),
+                    payment_payload=validated.payload.model_dump(by_alias=True, exclude_none=True),
                 )
                 record.save(force_insert=True)
         except IntegrityError:
-            logger.info(
-                'x402 authorization replay detected for nonce {}', validated.nonce)
+            logger.info("x402 authorization replay detected for nonce {}", validated.nonce)
             return Response(
                 {
-                    'isValid': False,
-                    'invalidReason': 'Authorization nonce already processed.',
-                    'payer': None,
+                    "isValid": False,
+                    "invalidReason": "Authorization nonce already processed.",
+                    "payer": None,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        logger.debug('x402 authorization stored: nonce={} payer={}',
-                     validated.nonce, validated.payer)
+        logger.debug("x402 authorization stored: nonce={} payer={}", validated.nonce, validated.payer)
         return Response(
             {
-                'isValid': True,
-                'invalidReason': None,
-                'payer': validated.payer,
+                "isValid": True,
+                "invalidReason": None,
+                "payer": validated.payer,
             },
             status=status.HTTP_200_OK,
         )
@@ -537,22 +499,22 @@ class X402SettleView(APIView):
             payload, requirements = _parse_payload(request.data)
             validated = _validate_payload(payload, requirements)
         except X402FacilitatorValidationError as exc:
-            logger.info('x402 settlement validation failed: {}', exc.message)
+            logger.info("x402 settlement validation failed: {}", exc.message)
             return Response(
                 {
-                    'success': False,
-                    'errorReason': exc.message,
-                    'transaction': None,
+                    "success": False,
+                    "errorReason": exc.message,
+                    "transaction": None,
                 },
                 status=status.HTTP_200_OK,
             )
         except X402FacilitatorError as exc:
-            logger.error('x402 settlement misconfiguration: {}', exc)
+            logger.error("x402 settlement misconfiguration: {}", exc)
             return Response(
                 {
-                    'success': False,
-                    'errorReason': 'Facilitator misconfiguration.',
-                    'transaction': None,
+                    "success": False,
+                    "errorReason": "Facilitator misconfiguration.",
+                    "transaction": None,
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -561,77 +523,70 @@ class X402SettleView(APIView):
             with transaction.atomic():
                 record = X402Authorization.objects.select_for_update().get(nonce=validated.nonce)
                 if record.status == X402Authorization.Status.SETTLED:
-                    raise X402FacilitatorValidationError(
-                        'Authorization nonce already settled.')
+                    raise X402FacilitatorValidationError("Authorization nonce already settled.")
 
                 if record.signature.lower() != validated.signature.lower():
-                    raise X402FacilitatorValidationError(
-                        'Authorization signature mismatch.')
+                    raise X402FacilitatorValidationError("Authorization signature mismatch.")
 
                 if record.payer.lower() != validated.payer.lower():
-                    raise X402FacilitatorValidationError(
-                        'Authorization signer mismatch.')
+                    raise X402FacilitatorValidationError("Authorization signer mismatch.")
 
                 if int(record.value) != validated.value:
-                    raise X402FacilitatorValidationError(
-                        'Authorization value mismatch.')
+                    raise X402FacilitatorValidationError("Authorization value mismatch.")
 
                 tx_hash = _submit_transfer_with_authorization(validated)
                 record.mark_settled(tx_hash)
-                record.save(update_fields=[
-                            'status', 'transaction_hash', 'settled_at', 'updated_at'])
+                record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
         except X402Authorization.DoesNotExist:
-            logger.info(
-                'x402 settlement attempted without prior verification for nonce {}', validated.nonce)
+            logger.info("x402 settlement attempted without prior verification for nonce {}", validated.nonce)
             return Response(
                 {
-                    'success': False,
-                    'errorReason': 'Authorization nonce not verified.',
-                    'transaction': None,
+                    "success": False,
+                    "errorReason": "Authorization nonce not verified.",
+                    "transaction": None,
                 },
                 status=status.HTTP_200_OK,
             )
         except X402FacilitatorValidationError as exc:
-            logger.info('x402 settlement rejected: {}', exc.message)
+            logger.info("x402 settlement rejected: {}", exc.message)
             return Response(
                 {
-                    'success': False,
-                    'errorReason': exc.message,
-                    'transaction': None,
+                    "success": False,
+                    "errorReason": exc.message,
+                    "transaction": None,
                 },
                 status=status.HTTP_200_OK,
             )
         except ContractLogicError as exc:
-            logger.error('x402 settlement reverted on-chain: {}', exc)
+            logger.error("x402 settlement reverted on-chain: {}", exc)
             reason = _map_contract_logic_error(exc)
             return Response(
                 {
-                    'success': False,
-                    'errorReason': reason,
-                    'transaction': None,
+                    "success": False,
+                    "errorReason": reason,
+                    "transaction": None,
                 },
                 status=status.HTTP_200_OK,
             )
         except X402FacilitatorError as exc:
-            logger.error('x402 settlement failed: {}', exc)
+            logger.error("x402 settlement failed: {}", exc)
             return Response(
                 {
-                    'success': False,
-                    'errorReason': str(exc),
-                    'transaction': None,
+                    "success": False,
+                    "errorReason": str(exc),
+                    "transaction": None,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        logger.info('x402 settlement succeeded for nonce {} tx {}',
-                    validated.nonce, tx_hash)
+        logger.info("x402 settlement succeeded for nonce {} tx {}", validated.nonce, tx_hash)
         return Response(
             {
-                'success': True,
-                'errorReason': None,
-                'transaction': tx_hash,
-                'network': str(validated.requirements.network),
-                'payer': validated.payer,
+                "success": True,
+                "errorReason": None,
+                "transaction": tx_hash,
+                "network": str(validated.requirements.network),
+                "payer": validated.payer,
             },
             status=status.HTTP_200_OK,
         )

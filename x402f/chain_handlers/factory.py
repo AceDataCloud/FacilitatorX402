@@ -1,7 +1,9 @@
 """
 Factory for creating chain handlers.
 """
-from typing import Dict, Any, Type
+
+from typing import Any, Dict, Type
+
 from .base import ChainHandler
 from .base_chain import BaseChainHandler
 from .solana_chain import SolanaChainHandler
@@ -11,9 +13,9 @@ class ChainHandlerFactory:
     """Factory to create chain handlers based on network name."""
 
     _handlers: Dict[str, Type[ChainHandler]] = {
-        'base': BaseChainHandler,
-        'solana': SolanaChainHandler,
-        'solana-devnet': SolanaChainHandler,
+        "base": BaseChainHandler,
+        "solana": SolanaChainHandler,
+        "solana-devnet": SolanaChainHandler,
     }
 
     @classmethod
@@ -35,11 +37,8 @@ class ChainHandlerFactory:
 
         handler_class = cls._handlers.get(network_lower)
         if handler_class is None:
-            supported = ', '.join(cls._handlers.keys())
-            raise ValueError(
-                f"Unsupported network: {network}. "
-                f"Supported networks: {supported}"
-            )
+            supported = ", ".join(cls._handlers.keys())
+            raise ValueError(f"Unsupported network: {network}. Supported networks: {supported}")
 
         return handler_class(config or {})
 

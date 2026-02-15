@@ -1,14 +1,16 @@
 """
 Base chain handler interface.
 """
+
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
 @dataclass
 class VerificationResult:
     """Result of payment verification."""
+
     is_valid: bool
     payer: Optional[str] = None
     invalid_reason: Optional[str] = None
@@ -18,6 +20,7 @@ class VerificationResult:
 @dataclass
 class SettlementResult:
     """Result of payment settlement."""
+
     success: bool
     transaction_hash: Optional[str] = None
     payer: Optional[str] = None

@@ -4,8 +4,8 @@ from django.utils import timezone
 
 class X402Authorization(models.Model):
     class Status(models.TextChoices):
-        VERIFIED = 'verified', 'Verified'
-        SETTLED = 'settled', 'Settled'
+        VERIFIED = "verified", "Verified"
+        SETTLED = "settled", "Settled"
 
     nonce = models.CharField(max_length=66, unique=True)
     # Multi-chain support: EVM addresses (42 chars) + Solana (base58 ~44 chars) + future chains
@@ -29,7 +29,7 @@ class X402Authorization(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def mark_settled(self, tx_hash: str) -> None:
         self.status = self.Status.SETTLED

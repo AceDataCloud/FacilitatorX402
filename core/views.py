@@ -103,8 +103,8 @@ HOME_PAGE_HTML = """<!DOCTYPE html>
 
 
 def home(request):
-    return HttpResponse(HOME_PAGE_HTML, content_type='text/html; charset=utf-8')
+    return HttpResponse(HOME_PAGE_HTML, content_type="text/html; charset=utf-8")
 
 
 def health(request):
-    return JsonResponse({'status': 'ok'})
+    return JsonResponse({"status": "ok"})
