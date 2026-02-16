@@ -334,7 +334,7 @@ class X402SettleView(APIView):
                 result = handler.settle_payment(payload, requirements)
 
                 if not result.success:
-                    logger.exception("x402 settlement failed for network {}: {}", network, result.error_reason)
+                    logger.error("x402 settlement failed for network {}: {}", network, result.error_reason)
                     return Response(
                         {
                             "success": False,
