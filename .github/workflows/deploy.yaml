@@ -34,7 +34,7 @@ jobs:
           wget -qO- https://ipecho.net/plain ; echo
 
       - name: Generate Build Number
-        uses: einaregilsson/build-number@v2
+        uses: einaregilsson/build-number@v3
         with:
           token: ${{ secrets.github_token }}
         env:
