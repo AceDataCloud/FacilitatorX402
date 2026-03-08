@@ -7,7 +7,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12"
-Django = "^3.2.0"
+Django = "^5.2.12"
 djangorestframework = "^3.12.4"
 environs = "^9.5.0"
 loguru = "^0.6.0"
