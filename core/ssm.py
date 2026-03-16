@@ -52,7 +52,10 @@ def load_ssm_secrets() -> None:
         resp = client.GetSecretValue(req)
         raw = resp.SecretString
     except Exception as exc:
-        logger.warning(f"Failed to fetch SSM secret '{secret_name}' from region '{region}': {exc}. Falling back to env/K8s secrets.")
+        logger.warning(
+            f"Failed to fetch SSM secret '{secret_name}' from region '{region}': {exc}. "
+            "Falling back to env/K8s secrets."
+        )
         return
 
     try:
