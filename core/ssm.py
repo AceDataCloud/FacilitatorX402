@@ -38,7 +38,10 @@ def load_ssm_secrets() -> None:
         from tencentcloud.common import credential
         from tencentcloud.ssm.v20190923 import models, ssm_client
     except ImportError:
-        logger.warning("tencentcloud-sdk-python is not installed; skipping SSM, falling back to env/K8s secrets.")
+        logger.warning(
+            "tencentcloud-sdk-python is not installed; "
+            "skipping SSM, falling back to env/K8s secrets."
+        )
         return
 
     try:
@@ -53,15 +56,18 @@ def load_ssm_secrets() -> None:
         raw = resp.SecretString
     except Exception as exc:
         logger.warning(
-            f"Failed to fetch SSM secret '{secret_name}' from region '{region}': {exc}. "
-            "Falling back to env/K8s secrets."
+            f"Failed to fetch SSM secret '{secret_name}' from "
+            f"region '{region}': {exc}. Falling back to env/K8s secrets."
         )
         return
 
     try:
         secrets: dict[str, str] = json.loads(raw)
     except json.JSONDecodeError as exc:
-        logger.warning(f"SSM secret '{secret_name}' is not valid JSON: {exc}. Falling back to env/K8s secrets.")
+        logger.warning(
+            f"SSM secret '{secret_name}' is not valid JSON: "
+            f"{exc}. Falling back to env/K8s secrets."
+        )
         return
 
     injected = 0
