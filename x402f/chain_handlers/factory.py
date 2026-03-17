@@ -6,6 +6,7 @@ from typing import Any, Dict, Type
 
 from .base import ChainHandler
 from .base_chain import BaseChainHandler
+from .skale_chain import SkaleChainHandler
 from .solana_chain import SolanaChainHandler
 
 
@@ -16,6 +17,7 @@ class ChainHandlerFactory:
         "base": BaseChainHandler,
         "solana": SolanaChainHandler,
         "solana-devnet": SolanaChainHandler,
+        "skale": SkaleChainHandler,
     }
 
     @classmethod

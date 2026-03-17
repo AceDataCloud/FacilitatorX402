@@ -80,6 +80,18 @@ def _get_chain_config(network: str) -> Dict[str, Any]:
             "fee_payer": getattr(settings, "X402_SOLANA_FEE_PAYER", ""),
             "cluster": cluster,
         }
+    # For SKALE Base chain (zero gas fees, EVM-compatible)
+    elif network_lower == "skale":
+        return {
+            "rpc_url": getattr(settings, "X402_SKALE_RPC_URL", "https://skale-base.skalenodes.com/v1/base"),
+            "signer_private_key": getattr(settings, "X402_SKALE_SIGNER_PRIVATE_KEY", ""),
+            "signer_address": getattr(settings, "X402_SKALE_SIGNER_ADDRESS", ""),
+            "fee_payer": getattr(settings, "X402_SKALE_FEE_PAYER", ""),
+            "gas_limit": getattr(settings, "X402_GAS_LIMIT", 250000),
+            "tx_timeout_seconds": getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120),
+            "max_fee_per_gas_wei": 0,
+            "max_priority_fee_per_gas_wei": 0,
+        }
     else:
         raise X402FacilitatorError(f"Unsupported network: {network}")
 
