@@ -288,7 +288,8 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
 
     asset_address = _normalize_address(data.requirements.asset)
     logger.debug(
-        "x402 settlement starting: network={} chain_id={} asset={} signer={} payer={} pay_to={} value={} valid_after={} valid_before={}",
+        "x402 settlement starting: network={} chain_id={} asset={}"
+        " signer={} payer={} pay_to={} value={} valid_after={} valid_before={}",
         str(data.requirements.network),
         getattr(web3.eth, "chain_id", None),
         asset_address,
@@ -338,7 +339,9 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
 
         friendly = _map_contract_logic_error(exc)
         logger.error(
-            "x402 settlement simulation reverted for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}",
+            "x402 settlement simulation reverted for asset={} code_size={}"
+            " network={} from={} to={} value={} valid_after={}"
+            " valid_before={} nonce={} error={}",
             asset_address,
             code_size,
             str(data.requirements.network),
@@ -367,7 +370,10 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
             )
 
         logger.warning(
-            "x402 settlement simulation returned empty data for asset={} code_size={} network={} from={} to={} value={} valid_after={} valid_before={} nonce={} error={}; continuing without simulation.",
+            "x402 settlement simulation returned empty data for asset={}"
+            " code_size={} network={} from={} to={} value={}"
+            " valid_after={} valid_before={} nonce={} error={};"
+            " continuing without simulation.",
             asset_address,
             code_size,
             str(data.requirements.network),
