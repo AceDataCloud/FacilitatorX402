@@ -5,7 +5,7 @@ SKALE Base is a zero-gas-fee EVM-compatible chain that bridges assets from Base.
 It uses the same EIP-712 TransferWithAuthorization flow as Base, but with:
 - Different Chain ID (1187947933 for mainnet)
 - Zero gas fees (transactions cost nothing)
-- Different RPC endpoint and USDC.e contract address
+- Different RPC endpoint and Bridged USDC (SKALE Bridge) contract address
 """
 
 from typing import Any, Dict
@@ -48,7 +48,7 @@ class SkaleChainHandler(BaseChainHandler):
         requirements: Dict[str, Any],
     ) -> SettlementResult:
         """
-        Execute USDC.e transferWithAuthorization on SKALE Base chain.
+        Execute Bridged USDC (SKALE Bridge) transferWithAuthorization on SKALE Base chain.
 
         SKALE has zero gas fees, so we set gasPrice=0 and use a minimal gas limit.
         """
