@@ -145,8 +145,10 @@ class SolanaChainHandler(ChainHandler):
 
         # In wallet sign-and-send flows, the signature is returned immediately but
         # the transaction may not be available via `getTransaction` until it
-        # reaches at least the requested commitment. We retry briefly.
-        for attempt in range(6):
+        # reaches at least the requested commitment.  Mainnet RPC propagation can
+        # take several seconds, so we use progressive backoff (total ~15 s).
+        max_attempts = 12
+        for attempt in range(max_attempts):
             try:
                 body = json.dumps(
                     {
@@ -188,11 +190,15 @@ class SolanaChainHandler(ChainHandler):
                         meta = result.get("meta")
                         return transaction_b64, meta if isinstance(meta, dict) else None
 
-            if attempt < 5:
-                time.sleep(0.5)
+            if attempt < max_attempts - 1:
+                # Progressive backoff: 0.5, 1.0, 1.5, 2.0, 2.0, 2.0, ...
+                delay = min(0.5 + attempt * 0.5, 2.0)
+                time.sleep(delay)
 
-        if last_error is not None:
-            logger.warning(f"Failed to fetch Solana transaction by signature: {last_error}")
+        logger.warning(
+            f"Failed to fetch Solana transaction after {max_attempts} attempts: "
+            f"sig={signature[:16]}..., last_error={last_error}"
+        )
         return None, None
 
     @staticmethod
