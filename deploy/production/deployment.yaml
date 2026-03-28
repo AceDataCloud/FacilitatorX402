@@ -115,10 +115,6 @@ spec:
                   key: TENCENT_CLOUD_SECRET_KEY
                   name: tencent-cloud
                   optional: true
-            - name: TENCENT_SSM_SECRET_NAME
-              value: ""
-            - name: TENCENT_SSM_REGION
-              value: ap-hongkong
           image: ghcr.io/acedatacloud/facilitator-backend:${TAG}
           imagePullPolicy: IfNotPresent
           name: facilitator-backend

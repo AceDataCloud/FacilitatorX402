@@ -2,10 +2,6 @@ from pathlib import Path
 
 from environs import Env
 
-from core.ssm import load_ssm_secrets
-
-load_ssm_secrets()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = Env()
