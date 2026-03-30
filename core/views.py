@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 
 HOME_PAGE_HTML = """<!DOCTYPE html>
@@ -108,3 +109,25 @@ def home(request):
 
 def health(request):
     return JsonResponse({"status": "ok"})
+
+
+def well_known_x402(request):
+    """x402 protocol discovery endpoint (/.well-known/x402)."""
+    from x402f.chain_handlers import ChainHandlerFactory
+
+    facilitator_url = request.build_absolute_uri("/").rstrip("/")
+    data = {
+        "facilitatorUrl": facilitator_url,
+        "supportedNetworks": ChainHandlerFactory.get_supported_networks(),
+        "supportedCurrencies": ["USDC"],
+        "endpoints": {
+            "supported": f"{facilitator_url}/supported",
+            "verify": f"{facilitator_url}/verify",
+            "settle": f"{facilitator_url}/settle",
+        },
+        "addresses": {
+            "base": getattr(settings, "X402_BASE_SIGNER_ADDRESS", "") or None,
+            "solana": getattr(settings, "X402_SOLANA_SIGNER_ADDRESS", "") or None,
+        },
+    }
+    return JsonResponse(data)
