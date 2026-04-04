@@ -17,7 +17,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from web3 import HTTPProvider, Web3
-from web3.exceptions import BadFunctionCallOutput, ContractLogicError
+from web3.exceptions import BadFunctionCallOutput, ContractLogicError, TransactionNotFound
 from x402.chains import get_chain_id
 from x402.types import PaymentPayload, PaymentRequirements
 
@@ -56,6 +56,14 @@ class X402FacilitatorValidationError(X402FacilitatorError):
         self.message = message
 
 
+class X402SettlementPendingError(X402FacilitatorError):
+    """Raised when tx was submitted but confirmation is not available yet."""
+
+    def __init__(self, tx_hash: str):
+        super().__init__("Settlement transaction submitted but confirmation is pending.")
+        self.tx_hash = tx_hash
+
+
 def _map_contract_logic_error(exc: ContractLogicError) -> str:
     """
     Turn low-level contract errors into a more user-friendly reason.
@@ -76,6 +84,39 @@ def _map_contract_logic_error(exc: ContractLogicError) -> str:
         return "Facilitator signer has insufficient native balance to pay gas."
 
     return "Settlement transaction reverted on-chain."
+
+
+def _is_retryable_preflight_error(exc: ContractLogicError) -> bool:
+    """Best-effort detection for preflight errors that can be stale/transient."""
+    lower = (str(exc) or "").lower()
+    return "amount exceeds balance" in lower or "insufficient balance" in lower
+
+
+def _build_web3_client() -> Web3:
+    rpc_url = getattr(settings, "X402_RPC_URL", "")
+    if not rpc_url:
+        raise X402FacilitatorError("X402_RPC_URL is not configured.")
+
+    web3 = Web3(HTTPProvider(rpc_url))
+    if not web3.is_connected():
+        raise X402FacilitatorError("Unable to connect to configured RPC endpoint.")
+    return web3
+
+
+def _check_transaction_status(tx_hash: str) -> bool | None:
+    """Return True/False for confirmed success/failure, None when still pending/unknown."""
+    web3 = _build_web3_client()
+    try:
+        receipt = web3.eth.get_transaction_receipt(tx_hash)
+    except TransactionNotFound:
+        return None
+    except Exception as exc:  # pragma: no cover - RPC differences are network-specific
+        message = str(exc).lower()
+        if "not found" in message or "unknown transaction" in message:
+            return None
+        logger.warning("x402 failed to query tx receipt {}: {}", tx_hash, exc)
+        return None
+    return bool(receipt and receipt.status == 1)
 
 
 @dataclass(frozen=True)
@@ -266,7 +307,6 @@ def _signature_to_components(signature: str) -> Tuple[int, bytes, bytes]:
 
 
 def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
-    rpc_url = getattr(settings, "X402_RPC_URL", "")
     private_key = getattr(settings, "X402_SIGNER_PRIVATE_KEY", "")
     configured_address = getattr(settings, "X402_SIGNER_ADDRESS", "")
     timeout = getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120)
@@ -274,14 +314,10 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     max_fee = getattr(settings, "X402_MAX_FEE_PER_GAS_WEI", 0)
     max_priority_fee = getattr(settings, "X402_MAX_PRIORITY_FEE_PER_GAS_WEI", 0)
 
-    if not rpc_url:
-        raise X402FacilitatorError("X402_RPC_URL is not configured.")
     if not private_key:
         raise X402FacilitatorError("X402_SIGNER_PRIVATE_KEY is not configured.")
 
-    web3 = Web3(HTTPProvider(rpc_url))
-    if not web3.is_connected():
-        raise X402FacilitatorError("Unable to connect to configured RPC endpoint.")
+    web3 = _build_web3_client()
 
     account = web3.eth.account.from_key(private_key)
     signer_address = _normalize_address(configured_address or account.address)
@@ -322,38 +358,47 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
         s,
     )
 
-    # Pre-flight simulation to surface clearer on-chain revert reasons
+    # Pre-flight simulation to surface clearer on-chain revert reasons.
+    # If preflight says insufficient balance, we still continue once because
+    # RPC state can be transient/stale while submission path succeeds.
     try:
         transfer_fn.call({"from": signer_address})
     except ContractLogicError as exc:
-        code_size = None
-        try:
-            code = web3.eth.get_code(asset_address)
-            code_size = len(code or b"")
-        except Exception as code_exc:  # pragma: no cover - diagnostics only
+        if _is_retryable_preflight_error(exc):
             logger.warning(
-                "x402 unable to fetch token bytecode for {}: {}",
-                asset_address,
-                code_exc,
+                "x402 preflight reported transient balance issue for nonce {}; proceeding with submission once: {}",
+                authorization.nonce,
+                exc,
             )
+        else:
+            code_size = None
+            try:
+                code = web3.eth.get_code(asset_address)
+                code_size = len(code or b"")
+            except Exception as code_exc:  # pragma: no cover - diagnostics only
+                logger.warning(
+                    "x402 unable to fetch token bytecode for {}: {}",
+                    asset_address,
+                    code_exc,
+                )
 
-        friendly = _map_contract_logic_error(exc)
-        logger.error(
-            "x402 settlement simulation reverted for asset={} code_size={}"
-            " network={} from={} to={} value={} valid_after={}"
-            " valid_before={} nonce={} error={}",
-            asset_address,
-            code_size,
-            str(data.requirements.network),
-            authorization.from_,
-            authorization.to,
-            int(authorization.value),
-            int(authorization.valid_after),
-            int(authorization.valid_before),
-            authorization.nonce,
-            exc,
-        )
-        raise X402FacilitatorError(friendly) from exc
+            friendly = _map_contract_logic_error(exc)
+            logger.error(
+                "x402 settlement simulation reverted for asset={} code_size={}"
+                " network={} from={} to={} value={} valid_after={}"
+                " valid_before={} nonce={} error={}",
+                asset_address,
+                code_size,
+                str(data.requirements.network),
+                authorization.from_,
+                authorization.to,
+                int(authorization.value),
+                int(authorization.valid_after),
+                int(authorization.valid_before),
+                authorization.nonce,
+                exc,
+            )
+            raise X402FacilitatorError(friendly) from exc
     except BadFunctionCallOutput as exc:
         # Some USDC implementations do not return a bool for transferWithAuthorization
         # and instead return empty data. In that case, we log diagnostics but continue
@@ -420,7 +465,13 @@ def _submit_transfer_with_authorization(data: ValidatedAuthorization) -> str:
     try:
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
     except Exception as exc:
-        raise X402FacilitatorError("Timed out waiting for settlement transaction.") from exc
+        logger.warning(
+            "x402 tx submitted but confirmation timed out for nonce {} tx {}: {}",
+            authorization.nonce,
+            tx_hash.hex(),
+            exc,
+        )
+        raise X402SettlementPendingError(tx_hash.hex()) from exc
 
     if receipt.status != 1:
         raise X402FacilitatorError("Settlement transaction reverted on-chain.")
@@ -525,11 +576,22 @@ class X402SettleView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        tx_hash = None
         try:
             with transaction.atomic():
                 record = X402Authorization.objects.select_for_update().get(nonce=validated.nonce)
                 if record.status == X402Authorization.Status.SETTLED:
-                    raise X402FacilitatorValidationError("Authorization nonce already settled.")
+                    tx_hash = record.transaction_hash
+                    return Response(
+                        {
+                            "success": True,
+                            "errorReason": None,
+                            "transaction": tx_hash,
+                            "network": str(validated.requirements.network),
+                            "payer": validated.payer,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
 
                 if record.signature.lower() != validated.signature.lower():
                     raise X402FacilitatorValidationError("Authorization signature mismatch.")
@@ -540,7 +602,39 @@ class X402SettleView(APIView):
                 if int(record.value) != validated.value:
                     raise X402FacilitatorValidationError("Authorization value mismatch.")
 
-                tx_hash = _submit_transfer_with_authorization(validated)
+                # If we already submitted once, reconcile by querying chain status
+                # instead of submitting a second transfer.
+                if record.transaction_hash:
+                    tx_status = _check_transaction_status(record.transaction_hash)
+                    if tx_status is True:
+                        record.mark_settled(record.transaction_hash)
+                        record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
+                        tx_hash = record.transaction_hash
+                    elif tx_status is False:
+                        return Response(
+                            {
+                                "success": False,
+                                "errorReason": "Previous settlement transaction reverted on-chain.",
+                                "transaction": record.transaction_hash,
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+                    else:
+                        return Response(
+                            {
+                                "success": False,
+                                "errorReason": (
+                                    "Settlement transaction is pending confirmation. Retry /settle with the same nonce."
+                                ),
+                                "transaction": record.transaction_hash,
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+                else:
+                    tx_hash = _submit_transfer_with_authorization(validated)
+                    record.transaction_hash = tx_hash
+                    record.save(update_fields=["transaction_hash", "updated_at"])
+
                 record.mark_settled(tx_hash)
                 record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
         except X402Authorization.DoesNotExist:
@@ -560,6 +654,20 @@ class X402SettleView(APIView):
                     "success": False,
                     "errorReason": exc.message,
                     "transaction": None,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except X402SettlementPendingError as exc:
+            # Persist tx hash so caller can retry idempotently until confirmed.
+            X402Authorization.objects.filter(nonce=validated.nonce).update(transaction_hash=exc.tx_hash)
+            logger.warning("x402 settlement pending for nonce {} tx {}", validated.nonce, exc.tx_hash)
+            return Response(
+                {
+                    "success": False,
+                    "errorReason": (
+                        "Settlement transaction submitted. Confirmation pending; retry /settle with same nonce."
+                    ),
+                    "transaction": exc.tx_hash,
                 },
                 status=status.HTTP_200_OK,
             )

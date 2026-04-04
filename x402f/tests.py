@@ -11,7 +11,7 @@ from hexbytes import HexBytes
 from x402.types import PaymentPayload, PaymentRequirements
 
 from x402f.models import X402Authorization
-from x402f.views import _build_typed_data
+from x402f.views import X402SettlementPendingError, _build_typed_data
 
 
 class X402FacilitatorViewTests(TestCase):
@@ -146,3 +146,78 @@ class X402FacilitatorViewTests(TestCase):
         self.assertEqual(record.status, X402Authorization.Status.SETTLED)
         self.assertEqual(record.transaction_hash, "0xabc123")
         submit_mock.assert_called_once()
+
+    @patch("x402f.views._submit_transfer_with_authorization", return_value="0xabc123")
+    def test_settle_is_idempotent_after_settled(self, submit_mock):
+        request_payload = self._build_request_payload()
+
+        verify_response = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(verify_response.status_code, 200)
+
+        first_settle = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        self.assertTrue(first_settle.json()["success"])
+
+        second_settle = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        second_body = second_settle.json()
+        self.assertEqual(second_settle.status_code, 200)
+        self.assertTrue(second_body["success"])
+        self.assertEqual(second_body["transaction"], "0xabc123")
+
+        # Settlement is replay-safe: we should not submit another tx.
+        submit_mock.assert_called_once()
+
+    @patch("x402f.views._check_transaction_status", side_effect=[True])
+    @patch("x402f.views._submit_transfer_with_authorization", side_effect=X402SettlementPendingError("0xpending"))
+    def test_settle_pending_then_reconcile_to_success(self, submit_mock, check_mock):
+        request_payload = self._build_request_payload()
+
+        verify_response = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(verify_response.status_code, 200)
+
+        # First settle submits tx but confirmation is pending.
+        first_settle = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        first_body = first_settle.json()
+        self.assertFalse(first_body["success"])
+        self.assertEqual(first_body["transaction"], "0xpending")
+
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
+        self.assertEqual(record.transaction_hash, "0xpending")
+
+        # Second settle with same nonce reconciles by querying chain and marks settled.
+        second_settle = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        second_body = second_settle.json()
+        self.assertEqual(second_settle.status_code, 200)
+        self.assertTrue(second_body["success"])
+        self.assertEqual(second_body["transaction"], "0xpending")
+
+        record.refresh_from_db()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLED)
+        self.assertEqual(record.transaction_hash, "0xpending")
+
+        submit_mock.assert_called_once()
+        check_mock.assert_called_once_with("0xpending")
