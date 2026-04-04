@@ -623,7 +623,9 @@ class X402SettleView(APIView):
                         return Response(
                             {
                                 "success": False,
-                                "errorReason": "Settlement transaction is pending confirmation. Retry /settle with the same nonce.",
+                                "errorReason": (
+                                    "Settlement transaction is pending confirmation. Retry /settle with the same nonce."
+                                ),
                                 "transaction": record.transaction_hash,
                             },
                             status=status.HTTP_200_OK,
@@ -662,7 +664,9 @@ class X402SettleView(APIView):
             return Response(
                 {
                     "success": False,
-                    "errorReason": "Settlement transaction submitted. Confirmation pending; retry /settle with same nonce.",
+                    "errorReason": (
+                        "Settlement transaction submitted. Confirmation pending; retry /settle with same nonce."
+                    ),
                     "transaction": exc.tx_hash,
                 },
                 status=status.HTTP_200_OK,
