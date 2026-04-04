@@ -1,6 +1,12 @@
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 
+NETWORK_TO_CAIP2 = {
+    "base": "eip155:8453",
+    "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "solana-devnet": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+}
+
 HOME_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -112,22 +118,42 @@ def health(request):
 
 
 def well_known_x402(request):
-    """x402 protocol discovery endpoint (/.well-known/x402)."""
+    """Machine-readable facilitator metadata endpoint (/.well-known/x402)."""
     from x402f.chain_handlers import ChainHandlerFactory
 
     facilitator_url = request.build_absolute_uri("/").rstrip("/")
+    supported_networks = ChainHandlerFactory.get_supported_networks()
+    addresses = {
+        "base": getattr(settings, "X402_BASE_SIGNER_ADDRESS", "") or None,
+        "solana": getattr(settings, "X402_SOLANA_SIGNER_ADDRESS", "") or None,
+        "skale": getattr(settings, "X402_SKALE_SIGNER_ADDRESS", "") or None,
+    }
+    addresses = {network: address for network, address in addresses.items() if address}
+
     data = {
-        "facilitatorUrl": facilitator_url,
-        "supportedNetworks": ChainHandlerFactory.get_supported_networks(),
-        "supportedCurrencies": ["USDC"],
-        "endpoints": {
-            "supported": f"{facilitator_url}/supported",
-            "verify": f"{facilitator_url}/verify",
-            "settle": f"{facilitator_url}/settle",
-        },
-        "addresses": {
-            "base": getattr(settings, "X402_BASE_SIGNER_ADDRESS", "") or None,
-            "solana": getattr(settings, "X402_SOLANA_SIGNER_ADDRESS", "") or None,
+        # Compatibility shape for discovery clients. Facilitators do not expose
+        # paid resources here, so the list intentionally remains empty.
+        "version": 1,
+        "resources": [],
+        "instructions": "This origin is an x402 facilitator. Use /supported, /verify, and /settle instead of treating it as a paid resource server.",
+        "facilitator": {
+            "name": "Ace Data Cloud Facilitator X402",
+            "url": facilitator_url,
+            "description": "Production settlement and verification service for Ace Data Cloud x402 payments.",
+            "supportedNetworks": [
+                {
+                    "network": network,
+                    "caip2": NETWORK_TO_CAIP2.get(network, network),
+                }
+                for network in supported_networks
+            ],
+            "supportedCurrencies": ["USDC"],
+            "endpoints": {
+                "supported": f"{facilitator_url}/supported",
+                "verify": f"{facilitator_url}/verify",
+                "settle": f"{facilitator_url}/settle",
+            },
+            "addresses": addresses,
         },
     }
     return JsonResponse(data)
