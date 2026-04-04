@@ -135,7 +135,10 @@ def well_known_x402(request):
         # paid resources here, so the list intentionally remains empty.
         "version": 1,
         "resources": [],
-        "instructions": "This origin is an x402 facilitator. Use /supported, /verify, and /settle instead of treating it as a paid resource server.",
+        "instructions": (
+            "This origin is an x402 facilitator. Use /supported, /verify, and /settle "
+            "instead of treating it as a paid resource server."
+        ),
         "facilitator": {
             "name": "Ace Data Cloud Facilitator X402",
             "url": facilitator_url,
