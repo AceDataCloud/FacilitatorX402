@@ -99,6 +99,21 @@ class X402FacilitatorViewTests(TestCase):
         self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
         self.assertEqual(body["payer"], record.payer)
 
+    def test_well_known_returns_machine_readable_metadata(self):
+        response = self.client.get("/.well-known/x402")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["version"], 1)
+        self.assertEqual(body["resources"], [])
+        self.assertEqual(body["facilitator"]["name"], "Ace Data Cloud Facilitator X402")
+        self.assertEqual(body["facilitator"]["endpoints"]["verify"], "http://testserver/verify")
+        self.assertIn(
+            {"network": "base", "caip2": "eip155:8453"},
+            body["facilitator"]["supportedNetworks"],
+        )
+        self.assertEqual(body["facilitator"]["addresses"]["base"], self.signer_account.address)
+
     def test_verify_rejects_replay(self):
         request_payload = self._build_request_payload()
 
