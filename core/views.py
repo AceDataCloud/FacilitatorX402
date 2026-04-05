@@ -117,11 +117,10 @@ def health(request):
     return JsonResponse({"status": "ok"})
 
 
-def well_known_x402(request):
-    """Machine-readable facilitator metadata endpoint (/.well-known/x402)."""
+def build_well_known_x402_data(facilitator_url: str) -> dict:
+    """Build machine-readable facilitator metadata for /.well-known/x402."""
     from x402f.chain_handlers import ChainHandlerFactory
 
-    facilitator_url = request.build_absolute_uri("/").rstrip("/")
     supported_networks = ChainHandlerFactory.get_supported_networks()
     addresses = {
         "base": getattr(settings, "X402_BASE_SIGNER_ADDRESS", "") or None,
@@ -159,4 +158,10 @@ def well_known_x402(request):
             "addresses": addresses,
         },
     }
-    return JsonResponse(data)
+    return data
+
+
+def well_known_x402(request):
+    """Machine-readable facilitator metadata endpoint (/.well-known/x402)."""
+    facilitator_url = request.build_absolute_uri("/").rstrip("/")
+    return JsonResponse(build_well_known_x402_data(facilitator_url))

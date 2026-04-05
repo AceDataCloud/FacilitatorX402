@@ -114,6 +114,14 @@ class X402FacilitatorViewTests(TestCase):
         )
         self.assertEqual(body["facilitator"]["addresses"]["base"], self.signer_account.address)
 
+    def test_well_known_with_trailing_slash_returns_machine_readable_metadata(self):
+        response = self.client.get("/.well-known/x402/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["version"], 1)
+        self.assertEqual(body["facilitator"]["endpoints"]["settle"], "http://testserver/settle")
+
     def test_verify_rejects_replay(self):
         request_payload = self._build_request_payload()
 
