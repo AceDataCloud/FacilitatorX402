@@ -348,10 +348,38 @@ class X402SettleView(APIView):
                 config = _get_chain_config(network)
                 handler = ChainHandlerFactory.create(network, config)
 
+                # Reconcile: if a previous settle attempt left a tx hash, check on-chain
+                if record.transaction_hash:
+                    confirmed = handler.check_transaction_status(record.transaction_hash)
+                    if confirmed:
+                        record.mark_settled(record.transaction_hash)
+                        record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
+                        logger.info(
+                            "x402 settlement reconciled for nonce {} tx {} network {}",
+                            nonce,
+                            record.transaction_hash,
+                            network,
+                        )
+                        return Response(
+                            {
+                                "success": True,
+                                "errorReason": None,
+                                "transaction": record.transaction_hash,
+                                "network": network,
+                                "payer": record.payer,
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+
                 # Settle payment using chain handler
                 result = handler.settle_payment(payload, requirements)
 
                 if not result.success:
+                    # Persist tx hash for future reconciliation even on failure
+                    if result.transaction_hash and not record.transaction_hash:
+                        record.transaction_hash = result.transaction_hash
+                        record.save(update_fields=["transaction_hash", "updated_at"])
+
                     logger.exception("x402 settlement failed for network {}: {}", network, result.error_reason)
                     return Response(
                         {
