@@ -767,3 +767,19 @@ class SolanaChainHandler(ChainHandler):
     def get_explorer_url(self, tx_hash: str) -> str:
         """Get Solscan explorer URL."""
         return f"https://solscan.io/tx/{tx_hash}"
+
+    def check_transaction_status(self, tx_hash: str) -> bool:
+        """Check if a Solana transaction has been confirmed."""
+        try:
+            rpc_url = self.config.get("rpc_url", "https://api.mainnet-beta.solana.com")
+            client = Client(rpc_url)
+            sig = SolSignature.from_string(tx_hash)
+            resp = client.get_signature_statuses([sig])
+            statuses = getattr(resp, "value", None)
+            if statuses and statuses[0] is not None:
+                status = statuses[0]
+                return getattr(status, "err", None) is None
+            return False
+        except Exception as exc:
+            logger.warning(f"check_transaction_status({tx_hash}): {exc}")
+            return False

@@ -355,6 +355,19 @@ class BaseChainHandler(ChainHandler):
             return "Facilitator has insufficient ETH for gas"
         return "Settlement transaction reverted on-chain"
 
+    def check_transaction_status(self, tx_hash: str) -> bool:
+        """Check if a Base chain transaction has been confirmed."""
+        try:
+            rpc_url = self.config.get("rpc_url", "")
+            if not rpc_url:
+                return False
+            web3 = Web3(HTTPProvider(rpc_url))
+            receipt = web3.eth.get_transaction_receipt(tx_hash)
+            return receipt is not None and receipt.status == 1
+        except Exception as exc:
+            logger.warning(f"check_transaction_status({tx_hash}): {exc}")
+            return False
+
     def get_explorer_url(self, tx_hash: str) -> str:
         """Get BaseScan explorer URL."""
         return f"https://basescan.org/tx/{tx_hash}"

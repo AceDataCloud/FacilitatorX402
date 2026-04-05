@@ -232,6 +232,76 @@ class X402MultichainViewTests(TestCase):
         # Settlement is replay-safe: we should not submit another tx.
         settle_mock.assert_called_once()
 
+    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.settle_payment")
+    def test_settle_persists_tx_hash_on_failure(self, settle_mock):
+        settle_mock.return_value = SettlementResult(
+            success=False,
+            transaction_hash="0xpending",
+            error_reason="Confirmation timed out",
+        )
+        request_payload = self._build_request_payload()
+
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        settle_response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        body = settle_response.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["transaction"], "0xpending")
+
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
+        self.assertEqual(record.transaction_hash, "0xpending")
+
+    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.check_transaction_status", return_value=True)
+    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.settle_payment")
+    def test_settle_pending_then_reconcile(self, settle_mock, check_mock):
+        settle_mock.return_value = SettlementResult(
+            success=False,
+            transaction_hash="0xpending",
+            error_reason="Confirmation timed out",
+        )
+        request_payload = self._build_request_payload()
+
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        # First settle: tx submitted but confirmation pending
+        first_settle = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        self.assertFalse(first_settle.json()["success"])
+
+        # Second settle: reconcile by checking chain → marks settled
+        second_settle = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        second_body = second_settle.json()
+        self.assertTrue(second_body["success"])
+        self.assertEqual(second_body["transaction"], "0xpending")
+
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLED)
+        self.assertEqual(record.transaction_hash, "0xpending")
+
+        # settle_payment called only once; second call reconciled without re-submitting
+        settle_mock.assert_called_once()
+        check_mock.assert_called_once_with("0xpending")
+
     def test_supported_lists_networks(self):
         response = self.client.get(reverse("x402:supported"))
 

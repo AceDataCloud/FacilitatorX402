@@ -98,6 +98,18 @@ class ChainHandler(ABC):
         """
         pass
 
+    def check_transaction_status(self, tx_hash: str) -> bool:
+        """
+        Check if a previously submitted transaction has been confirmed on-chain.
+
+        Args:
+            tx_hash: Transaction hash to check
+
+        Returns:
+            True if confirmed/successful, False otherwise
+        """
+        return False
+
     def get_explorer_url(self, tx_hash: str) -> str:
         """
         Get block explorer URL for transaction.
