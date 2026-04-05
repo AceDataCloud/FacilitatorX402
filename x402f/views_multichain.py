@@ -333,7 +333,16 @@ class X402SettleView(APIView):
                     )
 
                 if record.status == X402Authorization.Status.SETTLED:
-                    raise X402FacilitatorValidationError("Authorization nonce already settled.")
+                    return Response(
+                        {
+                            "success": True,
+                            "errorReason": None,
+                            "transaction": record.transaction_hash,
+                            "network": network,
+                            "payer": record.payer,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
 
                 # Create chain handler
                 config = _get_chain_config(network)
