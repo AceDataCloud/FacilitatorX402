@@ -51,7 +51,7 @@ jobs:
         run: docker-compose push
 
       - name: Set Kubectl (US SV cluster)
-        uses: Azure/k8s-set-context@v4
+        uses: Azure/k8s-set-context@v5
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}
 
