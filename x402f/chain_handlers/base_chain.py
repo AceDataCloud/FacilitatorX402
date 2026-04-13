@@ -121,7 +121,8 @@ class BaseChainHandler(ChainHandler):
                 )
 
             try:
-                max_amount = int(requirements.get("maxAmountRequired", "0"))
+                required_amount = requirements.get("amount") or requirements.get("maxAmountRequired", "0")
+                max_amount = int(required_amount)
                 auth_value = int(authorization.get("value", "0"))
             except (TypeError, ValueError):
                 return VerificationResult(is_valid=False, invalid_reason="Invalid amount in payload or requirements")
