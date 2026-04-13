@@ -94,6 +94,24 @@ spec:
                   key: SOLANA_SIGNER_ADDRESS
                   name: x402
                   optional: false
+            - name: X402_SKALE_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_RPC_URL
+                  name: x402
+                  optional: true
+            - name: X402_SKALE_SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_SIGNER_PRIVATE_KEY
+                  name: x402
+                  optional: true
+            - name: X402_SKALE_SIGNER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_SIGNER_ADDRESS
+                  name: x402
+                  optional: true
             - name: X402_GAS_LIMIT
               value: "250000"
             - name: X402_TX_TIMEOUT_SECONDS
