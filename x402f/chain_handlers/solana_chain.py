@@ -374,7 +374,8 @@ class SolanaChainHandler(ChainHandler):
             decimals = data[9]
 
             # Verify amount matches requirements exactly (per x402 spec)
-            max_amount = int(requirements.get("maxAmountRequired", "0"))
+            amount_required = requirements.get("amount") or requirements.get("maxAmountRequired", "0")
+            max_amount = int(amount_required)
             if amount != max_amount:
                 logger.error(f"Amount mismatch: {amount} != {max_amount}")
                 return None
@@ -473,23 +474,24 @@ class SolanaChainHandler(ChainHandler):
                 except Exception:
                     facilitator_pubkey = None
 
-            required_fields = ["payTo", "asset", "maxAmountRequired"]
-            missing = [f for f in required_fields if not requirements.get(f)]
-            if missing:
-                return VerificationResult(
-                    is_valid=False, invalid_reason=f"Missing payment requirements: {', '.join(missing)}"
-                )
+            amount_required = requirements.get("amount") or requirements.get("maxAmountRequired")
+            if not requirements.get("payTo"):
+                return VerificationResult(is_valid=False, invalid_reason="Missing payment requirements: payTo")
+            if not requirements.get("asset"):
+                return VerificationResult(is_valid=False, invalid_reason="Missing payment requirements: asset")
+            if not amount_required:
+                return VerificationResult(is_valid=False, invalid_reason="Missing payment requirements: amount")
 
             pay_to = requirements.get("payTo") or requirements.get("pay_to")
             if not self.validate_address(pay_to or ""):
                 return VerificationResult(is_valid=False, invalid_reason="Invalid payTo address")
 
             try:
-                max_amount_required = int(requirements.get("maxAmountRequired"))
+                amount_required_int = int(amount_required)
             except Exception:
-                return VerificationResult(is_valid=False, invalid_reason="Invalid maxAmountRequired")
-            if max_amount_required <= 0:
-                return VerificationResult(is_valid=False, invalid_reason="maxAmountRequired must be positive")
+                return VerificationResult(is_valid=False, invalid_reason="Invalid amount")
+            if amount_required_int <= 0:
+                return VerificationResult(is_valid=False, invalid_reason="amount must be positive")
 
             asset = requirements.get("asset")
             if not asset:

@@ -95,7 +95,7 @@ class X402MultichainViewTests(TestCase):
 
         # Raw dict payload for multichain views
         payment_payload = {
-            "x402Version": 1,
+            "x402Version": 2,
             "scheme": "exact",
             "network": "base",
             "payload": {
@@ -107,7 +107,7 @@ class X402MultichainViewTests(TestCase):
         payment_requirements = {
             "scheme": "exact",
             "network": "base",
-            "maxAmountRequired": "1000000",
+            "amount": "1000000",
             "resource": "https://example.com/resource",
             "description": "Test order",
             "payTo": self.pay_to,

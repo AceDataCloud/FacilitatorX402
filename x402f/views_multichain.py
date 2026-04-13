@@ -106,7 +106,7 @@ class X402SupportedView(APIView):
 
     def get(self, request, *args, **kwargs):  # noqa: ANN001
         kinds = [
-            {"x402Version": 1, "scheme": "exact", "network": network}
+            {"x402Version": 2, "scheme": "exact", "network": network}
             for network in ChainHandlerFactory.get_supported_networks()
         ]
         return Response({"kinds": kinds}, status=status.HTTP_200_OK)

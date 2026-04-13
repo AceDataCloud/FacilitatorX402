@@ -79,7 +79,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         )
 
         requirements = {
-            "maxAmountRequired": str(amount),
+            "amount": str(amount),
             "asset": USDC_MINT,
             "payTo": str(pay_to),
         }
@@ -130,7 +130,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         )
 
         requirements = {
-            "maxAmountRequired": str(amount),
+            "amount": str(amount),
             "asset": USDC_MINT,
             "payTo": str(pay_to),
         }
@@ -183,7 +183,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         )
 
         requirements = {
-            "maxAmountRequired": str(amount),
+            "amount": str(amount),
             "asset": USDC_MINT,
             "payTo": str(pay_to),
         }
