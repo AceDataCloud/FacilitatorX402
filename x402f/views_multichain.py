@@ -208,6 +208,8 @@ class X402VerifyView(APIView):
                     },
                     status=status.HTTP_200_OK,
                 )
+            except Exception as db_exc:
+                logger.warning("x402 failed to store authorization record (non-fatal): {}", db_exc)
 
             logger.debug("x402 authorization stored: nonce={} payer={} network={}", nonce, result.payer, network)
 
@@ -318,21 +320,49 @@ class X402SettleView(APIView):
 
         try:
             # Check if authorization exists and not settled
-            with transaction.atomic():
-                try:
-                    record = X402Authorization.objects.select_for_update().get(nonce=str(nonce))
-                except X402Authorization.DoesNotExist:
-                    logger.info("x402 settlement attempted without prior verification for nonce {}", nonce)
-                    return Response(
-                        {
-                            "success": False,
-                            "errorReason": "Authorization nonce not verified.",
-                            "transaction": None,
-                        },
-                        status=status.HTTP_200_OK,
-                    )
+            record = None
+            try:
+                with transaction.atomic():
+                    try:
+                        record = X402Authorization.objects.select_for_update().get(nonce=str(nonce))
+                    except X402Authorization.DoesNotExist:
+                        logger.info("x402 settlement attempted without prior verification for nonce {}", nonce)
+                        # Don't fail — proceed without record (DB may have been down during verify)
+            except Exception as db_exc:
+                logger.warning("x402 settle DB unavailable (non-fatal), proceeding without record: {}", db_exc)
+                pass  # db_available not needed, record stays None
 
-                if record.status == X402Authorization.Status.SETTLED:
+            if record and record.status == X402Authorization.Status.SETTLED:
+                return Response(
+                    {
+                        "success": True,
+                        "errorReason": None,
+                        "transaction": record.transaction_hash,
+                        "network": network,
+                        "payer": record.payer,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # Create chain handler
+            config = _get_chain_config(network)
+            handler = ChainHandlerFactory.create(network, config)
+
+            if record and record.transaction_hash:
+                # Reconcile: if a previous settle attempt left a tx hash, check on-chain
+                confirmed = handler.check_transaction_status(record.transaction_hash)
+                if confirmed:
+                    record.mark_settled(record.transaction_hash)
+                    try:
+                        record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
+                    except Exception:
+                        pass
+                    logger.info(
+                        "x402 settlement reconciled for nonce {} tx {} network {}",
+                        nonce,
+                        record.transaction_hash,
+                        network,
+                    )
                     return Response(
                         {
                             "success": True,
@@ -344,70 +374,50 @@ class X402SettleView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
-                # Create chain handler
-                config = _get_chain_config(network)
-                handler = ChainHandlerFactory.create(network, config)
+            # Settle payment using chain handler
+            result = handler.settle_payment(payload, requirements)
 
-                # Reconcile: if a previous settle attempt left a tx hash, check on-chain
-                if record.transaction_hash:
-                    confirmed = handler.check_transaction_status(record.transaction_hash)
-                    if confirmed:
-                        record.mark_settled(record.transaction_hash)
-                        record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
-                        logger.info(
-                            "x402 settlement reconciled for nonce {} tx {} network {}",
-                            nonce,
-                            record.transaction_hash,
-                            network,
-                        )
-                        return Response(
-                            {
-                                "success": True,
-                                "errorReason": None,
-                                "transaction": record.transaction_hash,
-                                "network": network,
-                                "payer": record.payer,
-                            },
-                            status=status.HTTP_200_OK,
-                        )
-
-                # Settle payment using chain handler
-                result = handler.settle_payment(payload, requirements)
-
-                if not result.success:
-                    # Persist tx hash for future reconciliation even on failure
-                    if result.transaction_hash and not record.transaction_hash:
-                        record.transaction_hash = result.transaction_hash
+            if not result.success:
+                # Persist tx hash for future reconciliation even on failure
+                if record and result.transaction_hash and not record.transaction_hash:
+                    record.transaction_hash = result.transaction_hash
+                    try:
                         record.save(update_fields=["transaction_hash", "updated_at"])
+                    except Exception:
+                        pass
 
-                    logger.exception("x402 settlement failed for network {}: {}", network, result.error_reason)
-                    return Response(
-                        {
-                            "success": False,
-                            "errorReason": result.error_reason,
-                            "transaction": result.transaction_hash,
-                        },
-                        status=status.HTTP_200_OK,
-                    )
-
-                # Mark as settled
-                record.mark_settled(result.transaction_hash)
-                record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
-
-                logger.info(
-                    "x402 settlement succeeded for nonce {} tx {} network {}", nonce, result.transaction_hash, network
-                )
-
+                logger.exception("x402 settlement failed for network {}: {}", network, result.error_reason)
                 return Response(
                     {
-                        "success": True,
-                        "errorReason": None,
+                        "success": False,
+                        "errorReason": result.error_reason,
                         "transaction": result.transaction_hash,
-                        "network": network,
-                        "payer": result.payer,
                     },
                     status=status.HTTP_200_OK,
                 )
+
+            # Mark as settled
+            if record:
+                record.mark_settled(result.transaction_hash)
+                try:
+                    record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
+                except Exception:
+                    pass
+
+            logger.info(
+                "x402 settlement succeeded for nonce {} tx {} network {}", nonce, result.transaction_hash, network
+            )
+
+            return Response(
+                {
+                    "success": True,
+                    "errorReason": None,
+                    "transaction": result.transaction_hash,
+                    "network": network,
+                    "payer": result.payer,
+                },
+                status=status.HTTP_200_OK,
+            )
 
         except X402FacilitatorValidationError as exc:
             logger.info("x402 settlement rejected: {}", exc.message)
