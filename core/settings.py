@@ -18,6 +18,7 @@ SECRET_KEY = env.str("APP_SECRET_KEY", "change-me")
 DEBUG = APP_ENV != "production"
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*"])
+APPEND_SLASH = False
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
