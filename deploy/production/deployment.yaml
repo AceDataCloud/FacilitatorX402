@@ -38,25 +38,25 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: PGSQL_HOST
-                  name: pgsql
+                  name: pgsql-qcloud
                   optional: false
             - name: PGSQL_PASSWORD
               valueFrom:
                 secretKeyRef:
                   key: PGSQL_PASSWORD
-                  name: pgsql
+                  name: pgsql-qcloud
                   optional: false
             - name: PGSQL_PORT
               valueFrom:
                 secretKeyRef:
                   key: PGSQL_PORT
-                  name: pgsql
+                  name: pgsql-qcloud
                   optional: false
             - name: PGSQL_USER
               valueFrom:
                 secretKeyRef:
                   key: PGSQL_USER
-                  name: pgsql
+                  name: pgsql-qcloud
                   optional: false
             - name: X402_BASE_RPC_URL
               valueFrom:

@@ -50,10 +50,10 @@ jobs:
       - name: Push Docker images
         run: docker-compose push
 
-      - name: Set Kubectl (US SV cluster)
+      - name: Set Kubectl (HK cluster)
         uses: Azure/k8s-set-context@v5
         with:
-          kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Test Kubectl
         run: |

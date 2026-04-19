@@ -69,7 +69,7 @@ python manage.py runserver 0.0.0.0:8008
 ## Containers and deployment
 
 - `docker-compose build && docker-compose up` runs the service with `uvicorn core.asgi:application --host 0.0.0.0 --port 8000`.
-- Kubernetes manifests live under `deploy/production`. Use `deploy/run.sh` during CI/CD to substitute the build number and apply.
+- Kubernetes manifests live under `deploy/production`. Use `deploy/run.sh` during CI/CD to substitute the build number, apply `Deployment`/`Service`/`Ingress`, wait for rollout, and run smoke checks through `port-forward`.
 - The GitHub Actions workflow `.github/workflows/deploy.yaml` handles build → push → rollout to the Ace Data Cloud cluster.
 
 ## API quick reference
