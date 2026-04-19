@@ -33,6 +33,75 @@ class X402FacilitatorValidationError(X402FacilitatorError):
         self.message = message
 
 
+def _get_trace_id(request) -> str | None:  # noqa: ANN001
+    return request.headers.get("X-Trace-ID")
+
+
+def _extract_signature(payload: Dict[str, Any]) -> str:
+    raw_payload = payload.get("payload")
+    if isinstance(raw_payload, dict):
+        return payload.get("signature") or raw_payload.get("signature", "")
+    return payload.get("signature", "")
+
+
+def _extract_nonce(payload: Dict[str, Any], network: str) -> str | None:
+    raw_payload = payload.get("payload")
+    authorization = raw_payload.get("authorization") if isinstance(raw_payload, dict) else {}
+    if isinstance(raw_payload, dict):
+        nonce = raw_payload.get("nonce") or (authorization or {}).get("nonce")
+        if nonce:
+            return str(nonce)
+        tx_data = (
+            raw_payload.get("serializedTransaction")
+            or raw_payload.get("serialized_transaction")
+            or raw_payload.get("transaction")
+        )
+        if isinstance(tx_data, dict) and tx_data.get("nonce"):
+            return str(tx_data["nonce"])
+    elif raw_payload and str(network).lower().startswith("solana"):
+        try:
+            tx_bytes = base64.b64decode(raw_payload)
+            digest = hashlib.sha256(tx_bytes).hexdigest()[:32]
+            return f"solana:{digest}"
+        except Exception:
+            return None
+
+    signature = _extract_signature(payload)
+    if signature:
+        return f"{network}:{signature[:16]}"
+    return None
+
+
+def _summarize_requirements(requirements: Dict[str, Any]) -> Dict[str, Any]:
+    extra = requirements.get("extra") or {}
+    return {
+        "network": requirements.get("network"),
+        "payTo": requirements.get("payTo"),
+        "asset": requirements.get("asset"),
+        "maxAmountRequired": requirements.get("maxAmountRequired"),
+        "amount": requirements.get("amount"),
+        "chainId": extra.get("chainId"),
+        "domainName": extra.get("name"),
+        "domainVersion": extra.get("version"),
+    }
+
+
+def _summarize_payload(payload: Dict[str, Any], network: str) -> Dict[str, Any]:
+    raw_payload = payload.get("payload")
+    authorization = raw_payload.get("authorization") if isinstance(raw_payload, dict) else {}
+    signature = _extract_signature(payload)
+    return {
+        "network": network,
+        "nonce": _extract_nonce(payload, network),
+        "payloadType": type(raw_payload).__name__,
+        "from": (authorization or {}).get("from"),
+        "to": (authorization or {}).get("to"),
+        "value": (authorization or {}).get("value"),
+        "hasSignature": bool(signature),
+        "signaturePrefix": signature[:16] if signature else None,
+    }
+
+
 def _parse_payload(request_data: dict):
     """Parse payment payload and requirements from request data."""
     try:
@@ -124,10 +193,11 @@ class X402VerifyView(APIView):
     permission_classes: list = []
 
     def post(self, request, *args, **kwargs):
+        trace_id = _get_trace_id(request)
         try:
             payload, requirements = _parse_payload(request.data)
         except X402FacilitatorValidationError as exc:
-            logger.info("x402 verification failed: {}", exc.message)
+            logger.info("x402 verification failed: trace_id={} reason={}", trace_id, exc.message)
             return Response(
                 {
                     "isValid": False,
@@ -149,7 +219,13 @@ class X402VerifyView(APIView):
 
         # Get network from requirements
         network = requirements.get("network", "base")
-        logger.debug(f"x402 verification for network: {network}")
+        logger.debug(
+            "x402 verification request: trace_id={} network={} requirements={} payload={}",
+            trace_id,
+            network,
+            _summarize_requirements(requirements),
+            _summarize_payload(payload, network),
+        )
 
         try:
             # Create chain handler for the network
@@ -160,7 +236,15 @@ class X402VerifyView(APIView):
             result = handler.verify_signature(payload, requirements)
 
             if not result.is_valid:
-                logger.info("x402 verification failed for network {}: {}", network, result.invalid_reason)
+                logger.info(
+                    "x402 verification failed: trace_id={} network={} nonce={} payer={} reason={} details={}",
+                    trace_id,
+                    network,
+                    _extract_nonce(payload, network),
+                    result.payer,
+                    result.invalid_reason,
+                    result.details,
+                )
                 return Response(
                     {
                         "isValid": False,
@@ -199,7 +283,13 @@ class X402VerifyView(APIView):
                     )
                     record.save(force_insert=True)
             except IntegrityError:
-                logger.info("x402 authorization replay detected for nonce {}", nonce)
+                logger.info(
+                    "x402 authorization replay detected: trace_id={} network={} nonce={} payer={}",
+                    trace_id,
+                    network,
+                    nonce,
+                    result.payer,
+                )
                 return Response(
                     {
                         "isValid": False,
@@ -209,9 +299,26 @@ class X402VerifyView(APIView):
                     status=status.HTTP_200_OK,
                 )
             except Exception as db_exc:
-                logger.warning("x402 failed to store authorization record (non-fatal): {}", db_exc)
+                logger.warning(
+                    "x402 failed to store authorization record (non-fatal): trace_id={} network={} "
+                    "nonce={} payer={} error={}",
+                    trace_id,
+                    network,
+                    nonce,
+                    result.payer,
+                    db_exc,
+                )
 
-            logger.debug("x402 authorization stored: nonce={} payer={} network={}", nonce, result.payer, network)
+            logger.info(
+                "x402 authorization stored: trace_id={} network={} nonce={} payer={} pay_to={} amount={} asset={}",
+                trace_id,
+                network,
+                nonce,
+                result.payer,
+                requirements.get("payTo"),
+                (result.details or {}).get("amount"),
+                requirements.get("asset"),
+            )
 
             return Response(
                 {
@@ -224,7 +331,7 @@ class X402VerifyView(APIView):
 
         except ValueError as exc:
             # Unsupported network
-            logger.error("x402 unsupported network {}: {}", network, exc)
+            logger.error("x402 unsupported network: trace_id={} network={} {}", trace_id, network, exc)
             return Response(
                 {
                     "isValid": False,
@@ -234,7 +341,7 @@ class X402VerifyView(APIView):
                 status=status.HTTP_200_OK,
             )
         except Exception as exc:
-            logger.error("x402 verification error: {}", exc)
+            logger.error("x402 verification error: trace_id={} network={} {}", trace_id, network, exc)
             import traceback
 
             logger.error(traceback.format_exc())
@@ -260,10 +367,11 @@ class X402SettleView(APIView):
     permission_classes: list = []
 
     def post(self, request, *args, **kwargs) -> Response:
+        trace_id = _get_trace_id(request)
         try:
             payload, requirements = _parse_payload(request.data)
         except X402FacilitatorValidationError as exc:
-            logger.info("x402 settlement validation failed: {}", exc.message)
+            logger.info("x402 settlement validation failed: trace_id={} reason={}", trace_id, exc.message)
             return Response(
                 {
                     "success": False,
@@ -285,7 +393,13 @@ class X402SettleView(APIView):
 
         # Get network from requirements
         network = requirements.get("network", "base")
-        logger.debug(f"x402 settlement for network: {network}")
+        logger.debug(
+            "x402 settlement request: trace_id={} network={} requirements={} payload={}",
+            trace_id,
+            network,
+            _summarize_requirements(requirements),
+            _summarize_payload(payload, network),
+        )
 
         # Extract nonce from payload, handling both EVM and Solana shapes
         raw_payload = payload.get("payload")
@@ -326,13 +440,32 @@ class X402SettleView(APIView):
                     try:
                         record = X402Authorization.objects.select_for_update().get(nonce=str(nonce))
                     except X402Authorization.DoesNotExist:
-                        logger.info("x402 settlement attempted without prior verification for nonce {}", nonce)
+                        logger.info(
+                            "x402 settlement attempted without prior verification: trace_id={} network={} nonce={}",
+                            trace_id,
+                            network,
+                            nonce,
+                        )
                         # Don't fail — proceed without record (DB may have been down during verify)
             except Exception as db_exc:
-                logger.warning("x402 settle DB unavailable (non-fatal), proceeding without record: {}", db_exc)
+                logger.warning(
+                    "x402 settle DB unavailable (non-fatal), proceeding without record: trace_id={} "
+                    "network={} nonce={} error={}",
+                    trace_id,
+                    network,
+                    nonce,
+                    db_exc,
+                )
                 pass  # db_available not needed, record stays None
 
             if record and record.status == X402Authorization.Status.SETTLED:
+                logger.info(
+                    "x402 settlement idempotent hit: trace_id={} network={} nonce={} tx={}",
+                    trace_id,
+                    network,
+                    nonce,
+                    record.transaction_hash,
+                )
                 return Response(
                     {
                         "success": True,
@@ -350,6 +483,13 @@ class X402SettleView(APIView):
 
             if record and record.transaction_hash:
                 # Reconcile: if a previous settle attempt left a tx hash, check on-chain
+                logger.debug(
+                    "x402 settlement reconcile check: trace_id={} network={} nonce={} tx={}",
+                    trace_id,
+                    network,
+                    nonce,
+                    record.transaction_hash,
+                )
                 confirmed = handler.check_transaction_status(record.transaction_hash)
                 if confirmed:
                     record.mark_settled(record.transaction_hash)
@@ -358,10 +498,11 @@ class X402SettleView(APIView):
                     except Exception:
                         pass
                     logger.info(
-                        "x402 settlement reconciled for nonce {} tx {} network {}",
+                        "x402 settlement reconciled: trace_id={} network={} nonce={} tx={}",
+                        trace_id,
+                        network,
                         nonce,
                         record.transaction_hash,
-                        network,
                     )
                     return Response(
                         {
@@ -386,7 +527,17 @@ class X402SettleView(APIView):
                     except Exception:
                         pass
 
-                logger.exception("x402 settlement failed for network {}: {}", network, result.error_reason)
+                logger.error(
+                    "x402 settlement failed: trace_id={} network={} nonce={} payer={} reason={} "
+                    "transaction={} details={}",
+                    trace_id,
+                    network,
+                    nonce,
+                    record.payer if record else result.payer,
+                    result.error_reason,
+                    result.transaction_hash,
+                    result.details,
+                )
                 return Response(
                     {
                         "success": False,
@@ -405,7 +556,12 @@ class X402SettleView(APIView):
                     pass
 
             logger.info(
-                "x402 settlement succeeded for nonce {} tx {} network {}", nonce, result.transaction_hash, network
+                "x402 settlement succeeded: trace_id={} network={} nonce={} tx={} payer={}",
+                trace_id,
+                network,
+                nonce,
+                result.transaction_hash,
+                result.payer,
             )
 
             return Response(
@@ -420,7 +576,7 @@ class X402SettleView(APIView):
             )
 
         except X402FacilitatorValidationError as exc:
-            logger.info("x402 settlement rejected: {}", exc.message)
+            logger.info("x402 settlement rejected: trace_id={} reason={}", trace_id, exc.message)
             return Response(
                 {
                     "success": False,
@@ -431,7 +587,7 @@ class X402SettleView(APIView):
             )
         except ValueError as exc:
             # Unsupported network
-            logger.error("x402 unsupported network {}: {}", network, exc)
+            logger.error("x402 unsupported network: trace_id={} network={} {}", trace_id, network, exc)
             return Response(
                 {
                     "success": False,
@@ -441,7 +597,7 @@ class X402SettleView(APIView):
                 status=status.HTTP_200_OK,
             )
         except Exception as exc:
-            logger.error("x402 settlement error: {}", exc)
+            logger.error("x402 settlement error: trace_id={} network={} nonce={} {}", trace_id, network, nonce, exc)
             import traceback
 
             logger.error(traceback.format_exc())
