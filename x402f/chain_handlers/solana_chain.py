@@ -684,8 +684,24 @@ class SolanaChainHandler(ChainHandler):
 
             # Sign as fee payer (signature index 0) for VersionedTransaction.
             try:
-                message_bytes = bytes(tx.message)
-                fee_payer_sig = facilitator_keypair.sign_message(message_bytes)
+                # CRITICAL: For V0 (versioned) transactions, Solana validates
+                # signatures against the wire bytes `0x80 || message_body`.
+                # solders' `bytes(tx.message)` returns the message body WITHOUT
+                # the leading 0x80 version prefix (it strips the discriminator),
+                # so we must prepend it ourselves. Otherwise the signature does
+                # not match what the on-chain runtime verifies and preflight
+                # rejects the transaction with `SignatureFailure`.
+                # @solana/web3.js's TransactionMessage.compileToV0Message().serialize()
+                # always includes the 0x80 prefix, which is why the user-side
+                # signature is correct but the facilitator-side signature was wrong.
+                from solders.message import MessageV0  # local import to keep top-level untouched
+
+                message_body = bytes(tx.message)
+                if isinstance(tx.message, MessageV0):
+                    signing_target = bytes([0x80]) + message_body
+                else:
+                    signing_target = message_body
+                fee_payer_sig = facilitator_keypair.sign_message(signing_target)
                 required = int(tx.message.header.num_required_signatures)
                 signatures = list(tx.signatures)
                 if len(signatures) < required:
