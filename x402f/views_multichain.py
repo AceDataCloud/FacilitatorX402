@@ -48,7 +48,9 @@ def _extract_nonce(payload: Dict[str, Any], network: str) -> str | None:
     raw_payload = payload.get("payload")
     authorization = raw_payload.get("authorization") if isinstance(raw_payload, dict) else {}
     if isinstance(raw_payload, dict):
-        nonce = raw_payload.get("nonce") or (authorization or {}).get("nonce")
+        # upto scheme stores nonce under permit2Authorization
+        permit2 = raw_payload.get("permit2Authorization") or raw_payload.get("permit2_authorization") or {}
+        nonce = raw_payload.get("nonce") or (authorization or {}).get("nonce") or permit2.get("nonce")
         if nonce:
             return str(nonce)
         tx_data = (
@@ -89,9 +91,11 @@ def _summarize_requirements(requirements: Dict[str, Any]) -> Dict[str, Any]:
 def _summarize_payload(payload: Dict[str, Any], network: str) -> Dict[str, Any]:
     raw_payload = payload.get("payload")
     authorization = raw_payload.get("authorization") if isinstance(raw_payload, dict) else {}
+    permit2 = raw_payload.get("permit2Authorization") if isinstance(raw_payload, dict) else None
     signature = _extract_signature(payload)
-    return {
+    summary = {
         "network": network,
+        "scheme": payload.get("scheme"),
         "nonce": _extract_nonce(payload, network),
         "payloadType": type(raw_payload).__name__,
         "from": (authorization or {}).get("from"),
@@ -100,6 +104,14 @@ def _summarize_payload(payload: Dict[str, Any], network: str) -> Dict[str, Any]:
         "hasSignature": bool(signature),
         "signaturePrefix": signature[:16] if signature else None,
     }
+    if isinstance(permit2, dict):
+        summary["upto"] = {
+            "from": permit2.get("from"),
+            "permittedAmount": (permit2.get("permitted") or {}).get("amount"),
+            "witnessTo": (permit2.get("witness") or {}).get("to"),
+            "witnessFacilitator": (permit2.get("witness") or {}).get("facilitator"),
+        }
+    return summary
 
 
 def _parse_payload(request_data: dict):
@@ -131,6 +143,7 @@ def _get_chain_config(network: str) -> Dict[str, Any]:
             "signer_address": getattr(settings, "X402_BASE_SIGNER_ADDRESS", ""),
             "fee_payer": getattr(settings, "X402_BASE_FEE_PAYER", ""),
             "gas_limit": getattr(settings, "X402_GAS_LIMIT", 250000),
+            "chain_id": getattr(settings, "X402_BASE_CHAIN_ID", 8453),
             "tx_timeout_seconds": getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120),
             "max_fee_per_gas_wei": getattr(settings, "X402_MAX_FEE_PER_GAS_WEI", 0),
             "max_priority_fee_per_gas_wei": getattr(settings, "X402_MAX_PRIORITY_FEE_PER_GAS_WEI", 0),
@@ -156,6 +169,7 @@ def _get_chain_config(network: str) -> Dict[str, Any]:
             "signer_private_key": getattr(settings, "X402_SKALE_SIGNER_PRIVATE_KEY", ""),
             "signer_address": getattr(settings, "X402_SKALE_SIGNER_ADDRESS", ""),
             "fee_payer": getattr(settings, "X402_SKALE_FEE_PAYER", ""),
+            "chain_id": getattr(settings, "X402_SKALE_CHAIN_ID", 1564830818),
             "tx_timeout_seconds": getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120),
         }
     else:
@@ -166,18 +180,25 @@ class X402SupportedView(APIView):
     """
     List supported payment kinds.
 
-    Mirrors the CDP facilitator `/supported` shape:
-    { "kinds": [ { "x402Version": 1, "scheme": "exact", "network": "base" }, ... ] }
+    Returns one entry per (network, scheme) tuple. For `upto`, includes
+    `extra.facilitatorAddress` so clients can embed it in the witness.
     """
 
     authentication_classes: list = []
     permission_classes: list = []
 
     def get(self, request, *args, **kwargs):  # noqa: ANN001
-        kinds = [
-            {"x402Version": 2, "scheme": "exact", "network": network}
-            for network in ChainHandlerFactory.get_supported_networks()
-        ]
+        kinds: list[Dict[str, Any]] = []
+        for network, scheme in ChainHandlerFactory.get_supported_kinds():
+            entry: Dict[str, Any] = {"x402Version": 2, "scheme": scheme, "network": network}
+            if scheme == "upto":
+                # Surface the EOA the proxy will enforce as msg.sender.
+                facilitator_address = getattr(settings, f"X402_{network.upper()}_SIGNER_ADDRESS", "") or getattr(
+                    settings, "X402_SIGNER_ADDRESS", ""
+                )
+                if facilitator_address:
+                    entry["extra"] = {"facilitatorAddress": facilitator_address}
+            kinds.append(entry)
         return Response({"kinds": kinds}, status=status.HTTP_200_OK)
 
 
@@ -217,20 +238,22 @@ class X402VerifyView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # Get network from requirements
+        # Get network + scheme from payload/requirements
         network = requirements.get("network", "base")
+        scheme = payload.get("scheme") or requirements.get("scheme") or "exact"
         logger.debug(
-            "x402 verification request: trace_id={} network={} requirements={} payload={}",
+            "x402 verification request: trace_id={} network={} scheme={} requirements={} payload={}",
             trace_id,
             network,
+            scheme,
             _summarize_requirements(requirements),
             _summarize_payload(payload, network),
         )
 
         try:
-            # Create chain handler for the network
+            # Create chain handler for the (network, scheme) tuple
             config = _get_chain_config(network)
-            handler = ChainHandlerFactory.create(network, config)
+            handler = ChainHandlerFactory.create(network, config, scheme=scheme)
 
             # Verify signature using chain handler
             result = handler.verify_signature(payload, requirements)
@@ -256,6 +279,10 @@ class X402VerifyView(APIView):
 
             # Extract nonce and other data
             nonce = result.details.get("nonce") if result.details else payload.get("payload", {}).get("nonce")
+            # Upto stores nonce under permit2Authorization
+            if not nonce:
+                permit2 = payload.get("payload", {}).get("permit2Authorization") or {}
+                nonce = permit2.get("nonce")
             # Always capture signature (top-level or nested) for storage/fallback
             signature = payload.get("signature") or payload.get("payload", {}).get("signature", "")
             if not nonce:
@@ -267,19 +294,26 @@ class X402VerifyView(APIView):
                 # Generate a unique identifier from signature
                 nonce = f"{network}:{signature[:32]}"
 
+            # Nonce uniqueness key: upto Permit2 nonces are 256-bit ints that may
+            # collide across schemes; prefix with scheme to keep DB-unique.
+            stored_nonce = f"{scheme}:{network}:{nonce}" if scheme != "exact" else str(nonce)
+
             # Store authorization record
             try:
                 with transaction.atomic():
                     record = X402Authorization(
-                        nonce=str(nonce),
+                        nonce=stored_nonce,
                         payer=result.payer,
                         pay_to=requirements.get("payTo", ""),
-                        value=str(result.details.get("amount", 0)) if result.details else "0",
+                        value=str(
+                            (result.details or {}).get("permitted_amount") or (result.details or {}).get("amount", 0)
+                        ),
                         valid_after=datetime.now(datetime_timezone.utc),  # Simplified
                         valid_before=datetime.now(datetime_timezone.utc),  # Simplified
                         signature=signature,
                         payment_requirements=requirements,
                         payment_payload=payload,
+                        scheme=scheme,
                     )
                     record.save(force_insert=True)
             except IntegrityError:
@@ -391,12 +425,14 @@ class X402SettleView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # Get network from requirements
+        # Get network + scheme from payload/requirements
         network = requirements.get("network", "base")
+        scheme = payload.get("scheme") or requirements.get("scheme") or "exact"
         logger.debug(
-            "x402 settlement request: trace_id={} network={} requirements={} payload={}",
+            "x402 settlement request: trace_id={} network={} scheme={} requirements={} payload={}",
             trace_id,
             network,
+            scheme,
             _summarize_requirements(requirements),
             _summarize_payload(payload, network),
         )
@@ -407,8 +443,9 @@ class X402SettleView(APIView):
 
         nonce = None
         auth = raw_payload.get("authorization") if isinstance(raw_payload, dict) else {}
+        permit2 = raw_payload.get("permit2Authorization") if isinstance(raw_payload, dict) else None
         if isinstance(raw_payload, dict):
-            nonce = raw_payload.get("nonce") or (auth or {}).get("nonce")
+            nonce = raw_payload.get("nonce") or (auth or {}).get("nonce") or (permit2 or {}).get("nonce")
             tx_data = (
                 raw_payload.get("serializedTransaction")
                 or raw_payload.get("serialized_transaction")
@@ -432,13 +469,16 @@ class X402SettleView(APIView):
         if nonce is None:
             nonce = f"{network}:{(signature or '')[:32]}"
 
+        # Mirror verify-time nonce prefixing so we can look up the right record.
+        stored_nonce = f"{scheme}:{network}:{nonce}" if scheme != "exact" else str(nonce)
+
         try:
             # Check if authorization exists and not settled
             record = None
             try:
                 with transaction.atomic():
                     try:
-                        record = X402Authorization.objects.select_for_update().get(nonce=str(nonce))
+                        record = X402Authorization.objects.select_for_update().get(nonce=stored_nonce)
                     except X402Authorization.DoesNotExist:
                         logger.info(
                             "x402 settlement attempted without prior verification: trace_id={} network={} nonce={}",
@@ -479,7 +519,7 @@ class X402SettleView(APIView):
 
             # Create chain handler
             config = _get_chain_config(network)
-            handler = ChainHandlerFactory.create(network, config)
+            handler = ChainHandlerFactory.create(network, config, scheme=scheme)
 
             if record and record.transaction_hash:
                 # Reconcile: if a previous settle attempt left a tx hash, check on-chain
@@ -549,21 +589,34 @@ class X402SettleView(APIView):
 
             # Mark as settled
             if record:
-                record.mark_settled(result.transaction_hash)
+                record.mark_settled(
+                    result.transaction_hash,
+                    settled_amount=(result.details or {}).get("amount"),
+                )
                 try:
-                    record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
+                    record.save(
+                        update_fields=[
+                            "status",
+                            "transaction_hash",
+                            "settled_at",
+                            "settled_amount",
+                            "updated_at",
+                        ]
+                    )
                 except Exception:
                     pass
 
             logger.info(
-                "x402 settlement succeeded: trace_id={} network={} nonce={} tx={} payer={}",
+                "x402 settlement succeeded: trace_id={} network={} nonce={} tx={} payer={} amount={}",
                 trace_id,
                 network,
                 nonce,
                 result.transaction_hash,
                 result.payer,
+                (result.details or {}).get("amount"),
             )
 
+            settled_amount = (result.details or {}).get("amount")
             return Response(
                 {
                     "success": True,
@@ -571,6 +624,7 @@ class X402SettleView(APIView):
                     "transaction": result.transaction_hash,
                     "network": network,
                     "payer": result.payer,
+                    "amount": str(settled_amount) if settled_amount is not None else None,
                 },
                 status=status.HTTP_200_OK,
             )
