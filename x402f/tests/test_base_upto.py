@@ -37,6 +37,7 @@ from x402f.chain_handlers.upto_constants import (
 )
 
 CHAIN_ID = 8453  # Base mainnet
+SKALE_CHAIN_ID = 1187947933
 USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAY_TO = "0x0000000000000000000000000000000000000123"
 FACILITATOR_EOA = None  # filled per-test from the signer account
@@ -114,10 +115,46 @@ def test_factory_dispatches_base_upto():
 
 
 def test_factory_dispatches_skale_upto():
-    h = ChainHandlerFactory.create("skale", {"chain_id": 1564830818}, scheme="upto")
+    h = ChainHandlerFactory.create("skale", {"chain_id": SKALE_CHAIN_ID}, scheme="upto")
     assert isinstance(h, SkaleUptoHandler)
     # SkaleUptoHandler is a thin subclass of BaseUptoHandler
     assert isinstance(h, BaseUptoHandler)
+
+
+def test_skale_upto_uses_gateway_chain_id_by_default(monkeypatch):
+    import django
+
+    monkeypatch.delenv("X402_SKALE_CHAIN_ID", raising=False)
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "core.settings")
+    django.setup()
+
+    from x402f.views_multichain import _get_chain_config
+
+    assert _get_chain_config("skale")["chain_id"] == SKALE_CHAIN_ID
+
+
+def test_supported_upto_entries_include_chain_id(monkeypatch):
+    import django
+
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "core.settings")
+    django.setup()
+
+    from django.conf import settings
+
+    from x402f.views_multichain import X402SupportedView
+
+    settings.X402_BASE_SIGNER_ADDRESS = _make_signer().address
+    settings.X402_SKALE_SIGNER_ADDRESS = _make_signer().address
+    settings.X402_BASE_CHAIN_ID = CHAIN_ID
+    settings.X402_SKALE_CHAIN_ID = SKALE_CHAIN_ID
+
+    response = X402SupportedView().get(None)
+    kinds = response.data["kinds"]
+
+    base_upto = next(item for item in kinds if item["network"] == "base" and item["scheme"] == "upto")
+    skale_upto = next(item for item in kinds if item["network"] == "skale" and item["scheme"] == "upto")
+    assert base_upto["extra"]["chainId"] == CHAIN_ID
+    assert skale_upto["extra"]["chainId"] == SKALE_CHAIN_ID
 
 
 def test_factory_unsupported_scheme_raises():
@@ -245,10 +282,19 @@ def test_verify_rejects_spender_tampering():
 def test_verify_rejects_tampered_signature():
     facilitator = _make_signer().address
     env = _sign_upto(amount=100, deadline=int(time.time()) + 600, valid_after=0, nonce=7, facilitator=facilitator)
-    # Mutate one byte deep inside the signature
-    sig = env["payload"]["signature"]
-    tampered = sig[:10] + ("0" if sig[10] != "0" else "1") + sig[11:]
-    env["payload"]["signature"] = tampered
+    typed = build_upto_permit2_typed_data(
+        chain_id=CHAIN_ID,
+        permitted_token=USDC,
+        permitted_amount=100,
+        nonce=7,
+        deadline=int(env["payload"]["permit2Authorization"]["deadline"]),
+        witness_to=PAY_TO,
+        witness_facilitator=facilitator,
+        witness_valid_after=0,
+    )
+    other = Account.from_key("0x" + "22" * 32)
+    signature = other.sign_message(encode_typed_data(full_message=typed)).signature.hex()
+    env["payload"]["signature"] = "0x" + signature.removeprefix("0x")
     result = _handler(facilitator).verify_signature(env, _requirements(100, facilitator))
     assert not result.is_valid
     assert result.invalid_reason == ERR_INVALID_SIGNATURE

@@ -112,6 +112,8 @@ spec:
                   key: SKALE_SIGNER_ADDRESS
                   name: x402
                   optional: true
+            - name: X402_SKALE_CHAIN_ID
+              value: "1187947933"
             - name: X402_GAS_LIMIT
               value: "250000"
             - name: X402_TX_TIMEOUT_SECONDS
