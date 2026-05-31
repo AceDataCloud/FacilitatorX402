@@ -14,7 +14,7 @@ PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
 X402_UPTO_PERMIT2_PROXY_ADDRESS = "0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002"
 
 # settle(PermitTransferFrom permit, uint256 settlementAmount, address owner,
-#        X402Witness witness, bytes signature) returns (bool)
+#        Witness witness, bytes signature) returns ()
 X402_UPTO_PERMIT2_PROXY_SETTLE_ABI = [
     {
         "inputs": [
@@ -48,7 +48,7 @@ X402_UPTO_PERMIT2_PROXY_SETTLE_ABI = [
             {"name": "signature", "type": "bytes"},
         ],
         "name": "settle",
-        "outputs": [{"name": "", "type": "bool"}],
+        "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function",
     }
@@ -104,13 +104,13 @@ def build_upto_permit2_typed_data(
                 {"name": "spender", "type": "address"},
                 {"name": "nonce", "type": "uint256"},
                 {"name": "deadline", "type": "uint256"},
-                {"name": "witness", "type": "X402Witness"},
+                {"name": "witness", "type": "Witness"},
             ],
             "TokenPermissions": [
                 {"name": "token", "type": "address"},
                 {"name": "amount", "type": "uint256"},
             ],
-            "X402Witness": [
+            "Witness": [
                 {"name": "to", "type": "address"},
                 {"name": "facilitator", "type": "address"},
                 {"name": "validAfter", "type": "uint256"},
