@@ -1,8 +1,8 @@
 """
-SKALE Base chain handler for EVM-based SKALE network.
+Handler for the x402 `exact` scheme on SKALE Base (zero-gas EVM-compatible chain).
 
-SKALE Base is a zero-gas-fee EVM-compatible chain that bridges assets from Base.
-It uses the same EIP-712 TransferWithAuthorization flow as Base, but with:
+SKALE Base bridges assets from Base. It uses the same EIP-712
+TransferWithAuthorization flow as Base, but with:
 - Different Chain ID (1187947933 for mainnet)
 - Zero gas fees (transactions cost nothing)
 - Different RPC endpoint and Bridged USDC (SKALE Bridge) contract address
@@ -15,14 +15,14 @@ from web3 import HTTPProvider, Web3
 from web3.exceptions import BadFunctionCallOutput, ContractLogicError
 
 from .base import SettlementResult
-from .base_chain import BaseChainHandler
+from .base_exact import BaseExactHandler
 
 
-class SkaleChainHandler(BaseChainHandler):
+class SkaleExactHandler(BaseExactHandler):
     """
     Handler for SKALE Base blockchain (zero gas fees, EVM-compatible).
 
-    Inherits all EIP-712 verification logic from BaseChainHandler.
+    Inherits all EIP-712 verification logic from BaseExactHandler.
     Overrides settlement to handle zero-gas transactions and SKALE-specific config.
     """
 
@@ -53,7 +53,7 @@ class SkaleChainHandler(BaseChainHandler):
         SKALE has zero gas fees, so we set gasPrice=0 and use a minimal gas limit.
         """
         try:
-            from .base_chain import USDC_TRANSFER_WITH_AUTHORIZATION_ABI
+            from .base_exact import USDC_TRANSFER_WITH_AUTHORIZATION_ABI
 
             rpc_url = self.config.get("rpc_url", "")
             private_key = self.config.get("signer_private_key", "")

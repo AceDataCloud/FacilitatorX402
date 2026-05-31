@@ -1,9 +1,14 @@
-"""Upto-scheme handler for EVM chains (Base, Skale, etc.).
+"""Handler for the x402 `upto` scheme on Base (Ethereum L2).
 
 Implements the x402 `upto` scheme using Uniswap Permit2 + the foundation's
 `x402UptoPermit2Proxy` contract. The client signs a *maximum* amount, the
 server settles the *actual* amount at request completion (used for chat / LLM
 metered billing).
+
+This class is also the base for other EVM-chain upto handlers (e.g.
+`SkaleUptoHandler`) — the Permit2 contract is deployed at the same CREATE2
+address on every EVM chain, so the only difference between chains is the
+rpc_url / chain_id / signer config passed in.
 
 Spec: https://github.com/x402-foundation/x402/blob/main/specs/schemes/upto/scheme_upto_evm.md
 """
@@ -84,12 +89,12 @@ def _split_settle_revert(exc: Exception) -> str:
     return ERR_SIMULATION_FAILED
 
 
-class UptoEvmHandler(ChainHandler):
-    """Handler implementing the `upto` x402 scheme on EVM chains.
+class BaseUptoHandler(ChainHandler):
+    """Handler for the x402 `upto` scheme on Base.
 
-    One handler instance per (chain_name, config) pair. The chain_name is
-    informational; the actual chain id comes from settings via `chain_id` /
-    `network_chain_ids` config.
+    Also used as the parent of `SkaleUptoHandler` — the Permit2 + x402 proxy
+    contracts are deployed at the same CREATE2 address on every EVM chain, so
+    chain-specific behaviour is config-driven (chain_id, rpc_url, signer).
     """
 
     def __init__(self, config: Dict[str, Any]):

@@ -1,5 +1,5 @@
 """
-Base chain handler for EVM-based Base network.
+Handler for the x402 `exact` scheme on Base (Ethereum L2).
 """
 
 from typing import Any, Dict
@@ -34,7 +34,7 @@ USDC_TRANSFER_WITH_AUTHORIZATION_ABI = [
 ]
 
 
-class BaseChainHandler(ChainHandler):
+class BaseExactHandler(ChainHandler):
     """Handler for Base (Ethereum L2) blockchain."""
 
     CHAIN_ID = 8453  # Base mainnet

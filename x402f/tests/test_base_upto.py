@@ -16,13 +16,12 @@ import pytest
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 
-from x402f.chain_handlers import ChainHandlerFactory, UptoEvmHandler
-from x402f.chain_handlers.upto_constants import (
-    PERMIT2_ADDRESS,
-    X402_UPTO_PERMIT2_PROXY_ADDRESS,
-    build_upto_permit2_typed_data,
+from x402f.chain_handlers import (
+    BaseUptoHandler,
+    ChainHandlerFactory,
+    SkaleUptoHandler,
 )
-from x402f.chain_handlers.upto_evm import (
+from x402f.chain_handlers.base_upto import (
     ERR_AMOUNT_MISMATCH,
     ERR_FACILITATOR_MISMATCH,
     ERR_INVALID_SIGNATURE,
@@ -30,6 +29,11 @@ from x402f.chain_handlers.upto_evm import (
     ERR_RECIPIENT_MISMATCH,
     ERR_TOKEN_MISMATCH,
     _parse_upto_payload,
+)
+from x402f.chain_handlers.upto_constants import (
+    PERMIT2_ADDRESS,
+    X402_UPTO_PERMIT2_PROXY_ADDRESS,
+    build_upto_permit2_typed_data,
 )
 
 CHAIN_ID = 8453  # Base mainnet
@@ -93,9 +97,9 @@ def _requirements(amount: int, facilitator: str) -> Dict[str, Any]:
     }
 
 
-def _handler(facilitator: str) -> UptoEvmHandler:
+def _handler(facilitator: str) -> BaseUptoHandler:
     # rpc_url left empty so on-chain preflight + simulate fail open.
-    return UptoEvmHandler(
+    return BaseUptoHandler(
         config={
             "chain_name": "base",
             "chain_id": CHAIN_ID,
@@ -104,9 +108,16 @@ def _handler(facilitator: str) -> UptoEvmHandler:
     )
 
 
-def test_factory_dispatches_upto_to_upto_handler():
+def test_factory_dispatches_base_upto():
     h = ChainHandlerFactory.create("base", {"chain_id": CHAIN_ID}, scheme="upto")
-    assert isinstance(h, UptoEvmHandler)
+    assert isinstance(h, BaseUptoHandler)
+
+
+def test_factory_dispatches_skale_upto():
+    h = ChainHandlerFactory.create("skale", {"chain_id": 1564830818}, scheme="upto")
+    assert isinstance(h, SkaleUptoHandler)
+    # SkaleUptoHandler is a thin subclass of BaseUptoHandler
+    assert isinstance(h, BaseUptoHandler)
 
 
 def test_factory_unsupported_scheme_raises():

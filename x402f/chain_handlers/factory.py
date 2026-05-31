@@ -7,22 +7,23 @@ Dispatch key is (network, scheme). The `upto` scheme is EVM-only (Base / Skale).
 from typing import Any, Dict, Tuple, Type
 
 from .base import ChainHandler
-from .base_chain import BaseChainHandler
-from .skale_chain import SkaleChainHandler
-from .solana_chain import SolanaChainHandler
-from .upto_evm import UptoEvmHandler
+from .base_exact import BaseExactHandler
+from .base_upto import BaseUptoHandler
+from .skale_exact import SkaleExactHandler
+from .skale_upto import SkaleUptoHandler
+from .solana_exact import SolanaExactHandler
 
 
 class ChainHandlerFactory:
     """Factory keyed by (network, scheme)."""
 
     _handlers: Dict[Tuple[str, str], Type[ChainHandler]] = {
-        ("base", "exact"): BaseChainHandler,
-        ("solana", "exact"): SolanaChainHandler,
-        ("solana-devnet", "exact"): SolanaChainHandler,
-        ("skale", "exact"): SkaleChainHandler,
-        ("base", "upto"): UptoEvmHandler,
-        ("skale", "upto"): UptoEvmHandler,
+        ("base", "exact"): BaseExactHandler,
+        ("solana", "exact"): SolanaExactHandler,
+        ("solana-devnet", "exact"): SolanaExactHandler,
+        ("skale", "exact"): SkaleExactHandler,
+        ("base", "upto"): BaseUptoHandler,
+        ("skale", "upto"): SkaleUptoHandler,
     }
 
     @classmethod
