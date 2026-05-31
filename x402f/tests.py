@@ -55,7 +55,7 @@ class X402MultichainViewTests(TestCase):
             "nonce": nonce_hex,
         }
 
-        # Build EIP-712 typed data (same as BaseChainHandler.verify_signature)
+        # Build EIP-712 typed data (same as BaseExactHandler.verify_signature)
         typed_data = {
             "types": {
                 "EIP712Domain": [
@@ -164,7 +164,7 @@ class X402MultichainViewTests(TestCase):
         self.assertIn("nonce", body["invalidReason"].lower())
         self.assertEqual(X402Authorization.objects.count(), 1)
 
-    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.settle_payment")
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_marks_authorization_settled(self, settle_mock):
         settle_mock.return_value = SettlementResult(
             success=True,
@@ -196,7 +196,7 @@ class X402MultichainViewTests(TestCase):
         self.assertEqual(record.transaction_hash, "0xabc123")
         settle_mock.assert_called_once()
 
-    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.settle_payment")
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_is_idempotent_after_settled(self, settle_mock):
         settle_mock.return_value = SettlementResult(
             success=True,
@@ -232,7 +232,7 @@ class X402MultichainViewTests(TestCase):
         # Settlement is replay-safe: we should not submit another tx.
         settle_mock.assert_called_once()
 
-    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.settle_payment")
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_persists_tx_hash_on_failure(self, settle_mock):
         settle_mock.return_value = SettlementResult(
             success=False,
@@ -260,8 +260,8 @@ class X402MultichainViewTests(TestCase):
         self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
         self.assertEqual(record.transaction_hash, "0xpending")
 
-    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.check_transaction_status", return_value=True)
-    @patch("x402f.chain_handlers.base_chain.BaseChainHandler.settle_payment")
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.check_transaction_status", return_value=True)
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_pending_then_reconcile(self, settle_mock, check_mock):
         settle_mock.return_value = SettlementResult(
             success=False,

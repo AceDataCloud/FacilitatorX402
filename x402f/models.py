@@ -7,7 +7,7 @@ class X402Authorization(models.Model):
         VERIFIED = "verified", "Verified"
         SETTLED = "settled", "Settled"
 
-    nonce = models.CharField(max_length=66, unique=True)
+    nonce = models.CharField(max_length=128, unique=True)
     # Multi-chain support: EVM addresses (42 chars) + Solana (base58 ~44 chars) + future chains
     payer = models.CharField(max_length=128)
     pay_to = models.CharField(max_length=128)
@@ -17,6 +17,9 @@ class X402Authorization(models.Model):
     signature = models.CharField(max_length=132)
     payment_requirements = models.JSONField()
     payment_payload = models.JSONField()
+    scheme = models.CharField(max_length=32, default="exact")
+    # For upto: settled_amount may differ from `value` (the signed ceiling).
+    settled_amount = models.CharField(max_length=78, blank=True, null=True)
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
@@ -31,7 +34,9 @@ class X402Authorization(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-    def mark_settled(self, tx_hash: str) -> None:
+    def mark_settled(self, tx_hash: str, settled_amount: str | None = None) -> None:
         self.status = self.Status.SETTLED
         self.transaction_hash = tx_hash
         self.settled_at = timezone.now()
+        if settled_amount is not None:
+            self.settled_amount = str(settled_amount)

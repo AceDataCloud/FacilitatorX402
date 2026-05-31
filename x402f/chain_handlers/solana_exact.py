@@ -1,5 +1,5 @@
 """
-Solana chain handler for x402 protocol.
+Handler for the x402 `exact` scheme on Solana (SVM).
 
 Based on x402 specification: specs/schemes/exact/scheme_exact_svm.md
 Reference: https://github.com/coinbase/x402
@@ -42,7 +42,7 @@ MEMO_PROGRAM_IDS = {MEMO_PROGRAM_ID_V1, MEMO_PROGRAM_ID_V2}
 TOKEN_LEDGER_PROGRAM_ID = Pubkey.from_string("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95")
 
 
-class SolanaChainHandler(ChainHandler):
+class SolanaExactHandler(ChainHandler):
     """
     Handler for Solana blockchain using x402 exact_svm scheme.
 

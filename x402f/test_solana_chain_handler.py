@@ -4,20 +4,20 @@ from solders.pubkey import Pubkey
 from spl.memo.constants import MEMO_PROGRAM_ID
 from spl.token.instructions import get_associated_token_address
 
-from x402f.chain_handlers.solana_chain import (
+from x402f.chain_handlers.solana_exact import (
     ASSOCIATED_TOKEN_PROGRAM_ID,
     COMPUTE_BUDGET_PROGRAM_ID,
     TOKEN_LEDGER_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
-    SolanaChainHandler,
+    SolanaExactHandler,
 )
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 
 class SolanaInstructionStructureTests(unittest.TestCase):
-    def _make_handler(self) -> "SolanaChainHandler":
-        return SolanaChainHandler(
+    def _make_handler(self) -> "SolanaExactHandler":
+        return SolanaExactHandler(
             config={
                 "rpc_url": "",
                 "signer_private_key": "",

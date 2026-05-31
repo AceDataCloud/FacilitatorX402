@@ -1,17 +1,24 @@
 """
 Chain handlers for multi-chain payment settlement.
+
+Naming convention: `<Chain><Scheme>Handler` (e.g. `BaseExactHandler`,
+`SkaleUptoHandler`). The factory keys on the `(network, scheme)` tuple.
 """
 
 from .base import ChainHandler
-from .base_chain import BaseChainHandler
+from .base_exact import BaseExactHandler
+from .base_upto import BaseUptoHandler
 from .factory import ChainHandlerFactory
-from .skale_chain import SkaleChainHandler
-from .solana_chain import SolanaChainHandler
+from .skale_exact import SkaleExactHandler
+from .skale_upto import SkaleUptoHandler
+from .solana_exact import SolanaExactHandler
 
 __all__ = [
     "ChainHandler",
-    "BaseChainHandler",
-    "SkaleChainHandler",
-    "SolanaChainHandler",
+    "BaseExactHandler",
+    "BaseUptoHandler",
+    "SkaleExactHandler",
+    "SkaleUptoHandler",
+    "SolanaExactHandler",
     "ChainHandlerFactory",
 ]
