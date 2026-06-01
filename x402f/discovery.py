@@ -23,7 +23,6 @@ from django.http import HttpResponse, JsonResponse
 # and by x402scan's own facilitator constants.
 USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 USDC_SOLANA = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-USDC_SKALE_BRIDGED = "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20"
 
 DEFAULT_UPSTREAM_URL = "https://platform.acedata.cloud/.well-known/x402"
 CACHE_KEY = "x402:discovery:items"
@@ -33,7 +32,6 @@ CACHE_TTL_SECONDS = 300
 def _build_accepts() -> List[Dict[str, Any]]:
     base_pay_to = os.environ.get("X402_BASE_PAY_TO", "").strip()
     solana_pay_to = os.environ.get("X402_SOLANA_PAY_TO", "").strip()
-    skale_pay_to = os.environ.get("X402_SKALE_PAY_TO", "").strip()
 
     accepts: List[Dict[str, Any]] = []
 
@@ -69,25 +67,12 @@ def _build_accepts() -> List[Dict[str, Any]]:
             }
         )
 
-    if skale_pay_to:
-        accepts.append(
-            {
-                "scheme": "exact",
-                "network": "skale",
-                "asset": os.environ.get("X402_SKALE_ASSET", USDC_SKALE_BRIDGED),
-                "payTo": skale_pay_to,
-                "maxAmountRequired": "0",
-                "maxTimeoutSeconds": 120,
-                "mimeType": "application/json",
-                "extra": {
-                    "name": "Bridged USDC (SKALE Bridge)",
-                    "version": "2",
-                    "decimals": 6,
-                    "chainId": 1187947933,
-                    "verifyingContract": os.environ.get("X402_SKALE_ASSET", USDC_SKALE_BRIDGED),
-                },
-            }
-        )
+    # SKALE Europa Hub mainnet (chainId 2046399126) is supported by our
+    # facilitator's /supported and /verify endpoints, but the x402 SDK's
+    # NetworkSchema enum (and consumers like x402scan) do not yet recognise
+    # a "skale" network token, so emitting it here would cause downstream
+    # zod validation to reject the entire accepts array (and drop every
+    # resource). Omit SKALE from discovery until upstream support lands.
 
     return accepts
 
