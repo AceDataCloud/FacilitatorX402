@@ -34,12 +34,14 @@ def _clear_cache():
 def test_build_accepts_includes_all_configured_networks(monkeypatch):
     monkeypatch.setenv("X402_BASE_PAY_TO", "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7")
     monkeypatch.setenv("X402_SOLANA_PAY_TO", "5iVXFrYaYWX2GUTbkQj8mDBoBhAX8bneYigS2LJTia43")
+    # SKALE env still set in prod but must NOT leak into discovery (see
+    # docstring in discovery.py for the upstream NetworkSchema reason).
     monkeypatch.setenv("X402_SKALE_PAY_TO", "0x1111111111111111111111111111111111111111")
 
     accepts = _build_accepts()
 
     networks = {a["network"] for a in accepts}
-    assert networks == {"base", "solana", "skale"}
+    assert networks == {"base", "solana"}
     for a in accepts:
         assert a["scheme"] == "exact"
         assert a["maxAmountRequired"] == "0"
