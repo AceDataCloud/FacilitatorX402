@@ -15,6 +15,7 @@ import base64
 import hashlib
 import json
 import time
+import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
@@ -142,6 +143,13 @@ class SolanaExactHandler(ChainHandler):
         """
         rpc_url = self.config.get("rpc_url", "") or "https://api.mainnet-beta.solana.com"
         last_error: Optional[Exception] = None
+        # Distinguish "RPC couldn't serve the tx" (transport/rate-limit/JSON-RPC error)
+        # from "tx genuinely not on-chain yet" (clean response, null result). The
+        # caller uses this to return an actionable reason — critical because in
+        # sign-and-send flows the user has ALREADY paid, so a bare "missing payload"
+        # 402 is the worst outcome (paid, no service).
+        self._last_fetch_error: Optional[str] = None
+        rpc_unavailable = False
 
         # In wallet sign-and-send flows, the signature is returned immediately but
         # the transaction may not be available via `getTransaction` until it
@@ -149,6 +157,7 @@ class SolanaExactHandler(ChainHandler):
         # take several seconds, so we use progressive backoff (total ~15 s).
         max_attempts = 12
         for attempt in range(max_attempts):
+            rate_limited = False
             try:
                 body = json.dumps(
                     {
@@ -173,9 +182,21 @@ class SolanaExactHandler(ChainHandler):
                 )
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     data = json.loads(resp.read().decode("utf-8") or "{}")
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                rpc_unavailable = True
+                # The public RPC throttles aggressively under bursts; 429/503 are
+                # transient — wait longer rather than burning attempts at 0.5s.
+                rate_limited = exc.code in (429, 503)
+                data = None
             except Exception as exc:
                 last_error = exc
+                rpc_unavailable = True
                 data = None
+
+            if isinstance(data, dict) and data.get("error"):
+                last_error = data.get("error")
+                rpc_unavailable = True
 
             if isinstance(data, dict) and not data.get("error"):
                 result = data.get("result")
@@ -191,13 +212,20 @@ class SolanaExactHandler(ChainHandler):
                         return transaction_b64, meta if isinstance(meta, dict) else None
 
             if attempt < max_attempts - 1:
-                # Progressive backoff: 0.5, 1.0, 1.5, 2.0, 2.0, 2.0, ...
+                # Progressive backoff: 0.5, 1.0, 1.5, 2.0, 2.0, 2.0, ...; back off
+                # harder when the RPC explicitly rate-limited us.
                 delay = min(0.5 + attempt * 0.5, 2.0)
+                if rate_limited:
+                    delay = min(delay * 2, 4.0)
                 time.sleep(delay)
 
+        if rpc_unavailable:
+            self._last_fetch_error = f"Solana RPC unavailable (last_error={last_error})"
+        else:
+            self._last_fetch_error = "transaction not found on-chain (unconfirmed or wrong signature)"
         logger.warning(
             f"Failed to fetch Solana transaction after {max_attempts} attempts: "
-            f"sig={signature[:16]}..., last_error={last_error}"
+            f"sig={signature[:16]}..., detail={self._last_fetch_error}"
         )
         return None, None
 
@@ -507,6 +535,15 @@ class SolanaExactHandler(ChainHandler):
                     if meta and meta.get("err") is not None:
                         return VerificationResult(is_valid=False, invalid_reason="On-chain transaction failed")
                 if not transaction_b64:
+                    # A signature was provided but the tx couldn't be fetched: the
+                    # user likely already paid (sign-and-send) and the RPC is just
+                    # unavailable/lagging — say so, don't claim the payload is missing.
+                    if signature:
+                        detail = getattr(self, "_last_fetch_error", None) or "transaction not yet confirmed"
+                        return VerificationResult(
+                            is_valid=False,
+                            invalid_reason=f"Could not fetch submitted transaction (sig={signature[:16]}...): {detail}",
+                        )
                     return VerificationResult(is_valid=False, invalid_reason="Missing transaction payload")
 
             # Deserialize transaction
@@ -622,6 +659,12 @@ class SolanaExactHandler(ChainHandler):
                 if signature:
                     transaction_b64, _meta = self._fetch_transaction_b64_by_signature(signature)
                 if not transaction_b64:
+                    if signature:
+                        detail = getattr(self, "_last_fetch_error", None) or "transaction not yet confirmed"
+                        return SettlementResult(
+                            success=False,
+                            error_reason=f"Could not fetch submitted transaction (sig={signature[:16]}...): {detail}",
+                        )
                     return SettlementResult(success=False, error_reason="Missing transaction payload")
 
             # Deserialize transaction
