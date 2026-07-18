@@ -2,20 +2,24 @@
 Multi-chain X402 facilitator views using ChainHandler pattern.
 """
 
-import base64
-import hashlib
-from datetime import datetime
+import secrets
+import zlib
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from datetime import timezone as datetime_timezone
 from typing import Any, Dict
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
+from django.db.models import Q
+from django.utils import timezone
 from loguru import logger
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from x402f.chain_handlers import ChainHandlerFactory
+from x402f.chain_handlers import ChainHandlerFactory, SolanaExactHandler
+from x402f.chain_handlers.base import TransactionStatus
 from x402f.models import X402Authorization
 
 
@@ -33,8 +37,30 @@ class X402FacilitatorValidationError(X402FacilitatorError):
         self.message = message
 
 
+class X402SettlementPersistenceError(X402FacilitatorError):
+    """A prepared transaction could not be recorded before broadcast."""
+
+    pass
+
+
 def _get_trace_id(request) -> str | None:  # noqa: ANN001
     return request.headers.get("X-Trace-ID")
+
+
+@contextmanager
+def _signer_lock(network: str):
+    """Serialize one facilitator signer without holding a DB transaction."""
+    if connection.vendor != "postgresql":
+        yield
+        return
+    lock_id = zlib.crc32(f"x402:{network}:signer".encode("utf-8"))
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_lock(%s)", [lock_id])
+    try:
+        yield
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_unlock(%s)", [lock_id])
 
 
 def _extract_signature(payload: Dict[str, Any]) -> str:
@@ -60,17 +86,14 @@ def _extract_nonce(payload: Dict[str, Any], network: str) -> str | None:
         )
         if isinstance(tx_data, dict) and tx_data.get("nonce"):
             return str(tx_data["nonce"])
+        if isinstance(tx_data, str) and str(network).lower().startswith("solana"):
+            return SolanaExactHandler.compute_transaction_nonce(tx_data)
     elif raw_payload and str(network).lower().startswith("solana"):
-        try:
-            tx_bytes = base64.b64decode(raw_payload)
-            digest = hashlib.sha256(tx_bytes).hexdigest()[:32]
-            return f"solana:{digest}"
-        except Exception:
-            return None
+        return SolanaExactHandler.compute_transaction_nonce(str(raw_payload))
 
     signature = _extract_signature(payload)
     if signature:
-        return f"{network}:{signature[:16]}"
+        return f"{network}:{signature[:32]}"
     return None
 
 
@@ -169,6 +192,7 @@ def _get_chain_config(network: str) -> Dict[str, Any]:
             "signer_private_key": getattr(settings, "X402_SKALE_SIGNER_PRIVATE_KEY", ""),
             "signer_address": getattr(settings, "X402_SKALE_SIGNER_ADDRESS", ""),
             "fee_payer": getattr(settings, "X402_SKALE_FEE_PAYER", ""),
+            "gas_limit": getattr(settings, "X402_SKALE_GAS_LIMIT", 400000),
             "chain_id": getattr(settings, "X402_SKALE_CHAIN_ID", 1187947933),
             "tx_timeout_seconds": getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120),
         }
@@ -336,14 +360,21 @@ class X402VerifyView(APIView):
                     status=status.HTTP_200_OK,
                 )
             except Exception as db_exc:
-                logger.warning(
-                    "x402 failed to store authorization record (non-fatal): trace_id={} network={} "
-                    "nonce={} payer={} error={}",
+                logger.error(
+                    "x402 failed to reserve authorization: trace_id={} network={} nonce={} payer={} error={}",
                     trace_id,
                     network,
                     nonce,
                     result.payer,
                     db_exc,
+                )
+                return Response(
+                    {
+                        "isValid": False,
+                        "invalidReason": "Unable to reserve payment authorization.",
+                        "payer": None,
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
 
             logger.info(
@@ -431,6 +462,28 @@ class X402SettleView(APIView):
         # Get network + scheme from payload/requirements
         network = requirements.get("network", "base")
         scheme = payload.get("scheme") or requirements.get("scheme") or "exact"
+        # Exact authorizations bind the full amount/payee at verify time, so
+        # public settlement cannot reduce or redirect payment. Upto settlement
+        # carries the resource server's metered actual amount and therefore
+        # requires authentication from the trusted Gateway.
+        if scheme == "upto":
+            expected_token = getattr(settings, "X402_SETTLE_TOKEN", "")
+            supplied_token = request.headers.get("X-Settlement-Token", "")
+            if not expected_token:
+                logger.error("x402 upto settlement disabled: X402_SETTLE_TOKEN is not configured")
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Settlement authentication is not configured.",
+                        "transaction": None,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            if not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
+                return Response(
+                    {"success": False, "errorReason": "Unauthorized settlement caller.", "transaction": None},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
         logger.debug(
             "x402 settlement request: trace_id={} network={} scheme={} requirements={} payload={}",
             trace_id,
@@ -440,68 +493,105 @@ class X402SettleView(APIView):
             _summarize_payload(payload, network),
         )
 
-        # Extract nonce from payload, handling both EVM and Solana shapes
-        raw_payload = payload.get("payload")
-        signature = payload.get("signature") or (raw_payload.get("signature") if isinstance(raw_payload, dict) else "")
-
-        nonce = None
-        auth = raw_payload.get("authorization") if isinstance(raw_payload, dict) else {}
-        permit2 = raw_payload.get("permit2Authorization") if isinstance(raw_payload, dict) else None
-        if isinstance(raw_payload, dict):
-            nonce = raw_payload.get("nonce") or (auth or {}).get("nonce") or (permit2 or {}).get("nonce")
-            tx_data = (
-                raw_payload.get("serializedTransaction")
-                or raw_payload.get("serialized_transaction")
-                or raw_payload.get("transaction")
-            )
-            if nonce is None and isinstance(tx_data, dict):
-                nonce = tx_data.get("nonce")
-        else:
-            # raw_payload might be a base64 solana transaction string
-            tx_data = raw_payload
-
-        # For solana, derive nonce from first signature if not provided
-        if nonce is None and str(network).lower().startswith("solana") and tx_data:
-            try:
-                tx_bytes = base64.b64decode(tx_data)
-                digest = hashlib.sha256(tx_bytes).hexdigest()[:32]
-                nonce = f"solana:{digest}"
-            except Exception:
-                nonce = None
-
+        signature = _extract_signature(payload)
+        nonce = _extract_nonce(payload, network)
         if nonce is None:
             nonce = f"{network}:{(signature or '')[:32]}"
 
         # Mirror verify-time nonce prefixing so we can look up the right record.
         stored_nonce = f"{scheme}:{network}:{nonce}" if scheme != "exact" else str(nonce)
+        claimed_record_id = None
+
+        def release_unsubmitted_claim() -> None:
+            if claimed_record_id is not None:
+                X402Authorization.objects.filter(
+                    pk=claimed_record_id,
+                    status=X402Authorization.Status.SETTLING,
+                    transaction_hash__isnull=True,
+                ).update(
+                    status=X402Authorization.Status.VERIFIED,
+                    settling_started_at=None,
+                    settled_amount=None,
+                )
 
         try:
-            # Check if authorization exists and not settled
-            record = None
+            # Load the verify-time reservation. Settlement ownership is claimed
+            # atomically below; never hold a database lock across chain RPC I/O.
             try:
-                with transaction.atomic():
-                    try:
-                        record = X402Authorization.objects.select_for_update().get(nonce=stored_nonce)
-                    except X402Authorization.DoesNotExist:
-                        logger.info(
-                            "x402 settlement attempted without prior verification: trace_id={} network={} nonce={}",
-                            trace_id,
-                            network,
-                            nonce,
-                        )
-                        # Don't fail — proceed without record (DB may have been down during verify)
+                record = X402Authorization.objects.get(nonce=stored_nonce)
+            except X402Authorization.DoesNotExist:
+                logger.info(
+                    "x402 settlement attempted without prior verification: trace_id={} network={} nonce={}",
+                    trace_id,
+                    network,
+                    nonce,
+                )
+                return Response(
+                    {"success": False, "errorReason": "Payment authorization was not verified.", "transaction": None},
+                    status=status.HTTP_200_OK,
+                )
             except Exception as db_exc:
-                logger.warning(
-                    "x402 settle DB unavailable (non-fatal), proceeding without record: trace_id={} "
-                    "network={} nonce={} error={}",
+                logger.error(
+                    "x402 settle DB unavailable: trace_id={} network={} nonce={} error={}",
                     trace_id,
                     network,
                     nonce,
                     db_exc,
                 )
-                pass  # db_available not needed, record stays None
+                return Response(
+                    {"success": False, "errorReason": "Unable to load payment authorization.", "transaction": None},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
 
-            if record and record.status == X402Authorization.Status.SETTLED:
+            stored_requirements = record.payment_requirements or {}
+            for field in ("scheme", "network", "asset", "payTo"):
+                stored_value = stored_requirements.get(field)
+                incoming_value = requirements.get(field)
+                if stored_value and incoming_value and str(stored_value).lower() != str(incoming_value).lower():
+                    return Response(
+                        {
+                            "success": False,
+                            "errorReason": f"Payment requirement mismatch: {field}",
+                            "transaction": None,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+            incoming_amount = requirements.get("amount") or requirements.get("maxAmountRequired")
+            stored_amount = stored_requirements.get("amount") or stored_requirements.get("maxAmountRequired")
+            if scheme == "exact" and stored_amount is not None and str(incoming_amount) != str(stored_amount):
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Payment requirement mismatch: amount",
+                        "transaction": None,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            if scheme == "upto" and incoming_amount is None:
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Missing settlement amount.",
+                        "transaction": record.transaction_hash,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            if (
+                scheme == "upto"
+                and record.settled_amount is not None
+                and str(incoming_amount) != str(record.settled_amount)
+            ):
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Payment requirement mismatch: settled amount",
+                        "transaction": record.transaction_hash,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            if record.status == X402Authorization.Status.SETTLED:
                 logger.info(
                     "x402 settlement idempotent hit: trace_id={} network={} nonce={} tx={}",
                     trace_id,
@@ -519,12 +609,22 @@ class X402SettleView(APIView):
                     },
                     status=status.HTTP_200_OK,
                 )
+            if record.status == X402Authorization.Status.FAILED:
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Settlement transaction failed on-chain.",
+                        "transaction": record.transaction_hash,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            payload = record.payment_payload
 
             # Create chain handler
             config = _get_chain_config(network)
             handler = ChainHandlerFactory.create(network, config, scheme=scheme)
 
-            if record and record.transaction_hash:
+            if record.transaction_hash:
                 # Reconcile: if a previous settle attempt left a tx hash, check on-chain
                 logger.debug(
                     "x402 settlement reconcile check: trace_id={} network={} nonce={} tx={}",
@@ -533,13 +633,22 @@ class X402SettleView(APIView):
                     nonce,
                     record.transaction_hash,
                 )
-                confirmed = handler.check_transaction_status(record.transaction_hash)
-                if confirmed:
-                    record.mark_settled(record.transaction_hash)
-                    try:
-                        record.save(update_fields=["status", "transaction_hash", "settled_at", "updated_at"])
-                    except Exception:
-                        pass
+                tx_status = handler.get_transaction_status(record.transaction_hash)
+                if tx_status == TransactionStatus.CONFIRMED:
+                    record.mark_settled(
+                        record.transaction_hash,
+                        settled_amount=record.settled_amount if scheme == "upto" else None,
+                    )
+                    record.save(
+                        update_fields=[
+                            "status",
+                            "transaction_hash",
+                            "settled_at",
+                            "settled_amount",
+                            "settling_started_at",
+                            "updated_at",
+                        ]
+                    )
                     logger.info(
                         "x402 settlement reconciled: trace_id={} network={} nonce={} tx={}",
                         trace_id,
@@ -557,18 +666,145 @@ class X402SettleView(APIView):
                         },
                         status=status.HTTP_200_OK,
                     )
+                if tx_status == TransactionStatus.FAILED:
+                    if str(network).lower().startswith("solana"):
+                        X402Authorization.objects.filter(pk=record.pk).update(status=X402Authorization.Status.FAILED)
+                    else:
+                        X402Authorization.objects.filter(pk=record.pk).update(
+                            status=X402Authorization.Status.VERIFIED,
+                            transaction_hash=None,
+                            settling_started_at=None,
+                            settled_amount=None,
+                        )
+                    return Response(
+                        {
+                            "success": False,
+                            "errorReason": "Settlement transaction failed on-chain.",
+                            "transaction": record.transaction_hash,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Settlement transaction is pending confirmation.",
+                        "transaction": record.transaction_hash,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            lease_seconds = int(getattr(settings, "X402_SETTLEMENT_LEASE_SECONDS", 300))
+            lease_cutoff = timezone.now() - timedelta(seconds=lease_seconds)
+            if (
+                record.status == X402Authorization.Status.SETTLING
+                and record.settling_started_at
+                and record.settling_started_at >= lease_cutoff
+            ):
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Settlement is already in progress.",
+                        "transaction": None,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            claim_updates = {
+                "status": X402Authorization.Status.SETTLING,
+                "settling_started_at": timezone.now(),
+            }
+            if scheme == "upto":
+                claim_updates["settled_amount"] = str(incoming_amount)
+
+            claimed = (
+                X402Authorization.objects.filter(pk=record.pk, transaction_hash__isnull=True)
+                .filter(
+                    Q(status=X402Authorization.Status.VERIFIED)
+                    | Q(
+                        status=X402Authorization.Status.SETTLING,
+                        settling_started_at__lt=lease_cutoff,
+                    )
+                )
+                .update(**claim_updates)
+            )
+            if claimed != 1:
+                record.refresh_from_db()
+                if record.status == X402Authorization.Status.SETTLED:
+                    return Response(
+                        {
+                            "success": True,
+                            "errorReason": None,
+                            "transaction": record.transaction_hash,
+                            "network": network,
+                            "payer": record.payer,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+                return Response(
+                    {
+                        "success": False,
+                        "errorReason": "Settlement is already in progress.",
+                        "transaction": record.transaction_hash,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            record.status = X402Authorization.Status.SETTLING
+            record.settling_started_at = timezone.now()
+            if scheme == "upto":
+                record.settled_amount = str(incoming_amount)
+            claimed_record_id = record.pk
+
+            def persist_prepared_hash(tx_hash: str) -> None:
+                try:
+                    updated = X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash__isnull=True,
+                    ).update(transaction_hash=tx_hash)
+                except Exception as exc:
+                    raise X402SettlementPersistenceError(
+                        "Unable to persist prepared settlement transaction hash"
+                    ) from exc
+                if updated != 1:
+                    raise X402SettlementPersistenceError("Unable to persist prepared settlement transaction hash")
+                record.transaction_hash = tx_hash
 
             # Settle payment using chain handler
-            result = handler.settle_payment(payload, requirements)
+            with _signer_lock(network):
+                result = handler.settle_payment(
+                    payload,
+                    requirements,
+                    on_transaction_prepared=persist_prepared_hash,
+                )
 
             if not result.success:
+                if (result.details or {}).get("broadcast_status") == "rejected":
+                    X402Authorization.objects.filter(pk=record.pk).update(
+                        status=X402Authorization.Status.FAILED,
+                        transaction_hash=None,
+                        settling_started_at=None,
+                        settled_amount=None,
+                    )
+                    record.status = X402Authorization.Status.FAILED
+                    record.transaction_hash = None
+                    result.transaction_hash = None
                 # Persist tx hash for future reconciliation even on failure
-                if record and result.transaction_hash and not record.transaction_hash:
+                elif record and result.transaction_hash and not record.transaction_hash:
                     record.transaction_hash = result.transaction_hash
                     try:
-                        record.save(update_fields=["transaction_hash", "updated_at"])
+                        record.save(update_fields=["status", "transaction_hash", "updated_at"])
                     except Exception:
                         pass
+                elif record and not result.transaction_hash:
+                    X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash__isnull=True,
+                    ).update(
+                        status=X402Authorization.Status.VERIFIED,
+                        settling_started_at=None,
+                        settled_amount=None,
+                    )
 
                 logger.error(
                     "x402 settlement failed: trace_id={} network={} nonce={} payer={} reason={} "
@@ -596,6 +832,7 @@ class X402SettleView(APIView):
                     result.transaction_hash,
                     settled_amount=(result.details or {}).get("amount"),
                 )
+                record.settling_started_at = None
                 try:
                     record.save(
                         update_fields=[
@@ -603,11 +840,20 @@ class X402SettleView(APIView):
                             "transaction_hash",
                             "settled_at",
                             "settled_amount",
+                            "settling_started_at",
                             "updated_at",
                         ]
                     )
-                except Exception:
-                    pass
+                except Exception as save_exc:
+                    logger.error("x402 settled but failed to persist result: {}", save_exc)
+                    return Response(
+                        {
+                            "success": False,
+                            "errorReason": "Settlement confirmed but result persistence failed.",
+                            "transaction": result.transaction_hash,
+                        },
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    )
 
             logger.info(
                 "x402 settlement succeeded: trace_id={} network={} nonce={} tx={} payer={} amount={}",
@@ -633,6 +879,7 @@ class X402SettleView(APIView):
             )
 
         except X402FacilitatorValidationError as exc:
+            release_unsubmitted_claim()
             logger.info("x402 settlement rejected: trace_id={} reason={}", trace_id, exc.message)
             return Response(
                 {
@@ -643,6 +890,7 @@ class X402SettleView(APIView):
                 status=status.HTTP_200_OK,
             )
         except ValueError as exc:
+            release_unsubmitted_claim()
             # Unsupported network
             logger.error("x402 unsupported network: trace_id={} network={} {}", trace_id, network, exc)
             return Response(
@@ -653,7 +901,25 @@ class X402SettleView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+        except X402SettlementPersistenceError as exc:
+            release_unsubmitted_claim()
+            logger.error(
+                "x402 settlement persistence error: trace_id={} network={} nonce={} {}",
+                trace_id,
+                network,
+                nonce,
+                exc,
+            )
+            return Response(
+                {
+                    "success": False,
+                    "errorReason": "Unable to persist prepared settlement transaction.",
+                    "transaction": None,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as exc:
+            release_unsubmitted_claim()
             logger.error("x402 settlement error: trace_id={} network={} nonce={} {}", trace_id, network, nonce, exc)
             import traceback
 

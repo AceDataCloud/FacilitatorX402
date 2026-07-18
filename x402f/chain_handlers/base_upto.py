@@ -24,7 +24,7 @@ from loguru import logger
 from web3 import HTTPProvider, Web3
 from web3.exceptions import BadFunctionCallOutput, ContractLogicError
 
-from .base import ChainHandler, SettlementResult, VerificationResult
+from .base import ChainHandler, SettlementResult, TransactionStatus, VerificationResult
 from .upto_constants import (
     ERC20_READ_ABI,
     PERMIT2_ADDRESS,
@@ -56,6 +56,16 @@ ERR_SETTLEMENT_EXCEEDS_AMOUNT = "invalid_upto_evm_payload_settlement_exceeds_amo
 # Tolerate a small clock skew on deadline / validAfter checks (seconds).
 _TIME_SKEW_BUFFER = 30
 
+_CUSTOM_ERROR_SELECTORS = {
+    "0xfe64b4c7": ERR_SETTLEMENT_EXCEEDS_AMOUNT,
+    "0x0f6fae87": ERR_FACILITATOR_MISMATCH,
+    "0x756688fe": ERR_INVALID_SIGNATURE,
+    "0xa65539fa": ERR_NOT_YET_VALID,
+    "0x49e27cff": ERR_INVALID_PAYLOAD,
+    "0xac6b05f5": ERR_INVALID_PAYLOAD,
+    "0x2c5211c6": ERR_INVALID_PAYLOAD,
+}
+
 
 def _to_int(value: Any) -> Optional[int]:
     try:
@@ -72,6 +82,9 @@ def _split_settle_revert(exc: Exception) -> str:
     """Map proxy revert strings to spec-defined error codes."""
     msg = str(exc) or ""
     lower = msg.lower()
+    for selector, error_code in _CUSTOM_ERROR_SELECTORS.items():
+        if selector in lower:
+            return error_code
     if "amountexceedspermitted" in lower:
         return ERR_SETTLEMENT_EXCEEDS_AMOUNT
     if "unauthorizedfacilitator" in lower:
@@ -112,6 +125,9 @@ class BaseUptoHandler(ChainHandler):
     @property
     def chain_name(self) -> str:
         return self._chain_name
+
+    def _transaction_gas_limit(self, estimated_gas: int) -> int:
+        return max(int(estimated_gas), self._gas_limit)
 
     def validate_address(self, address: str) -> bool:
         try:
@@ -234,6 +250,7 @@ class BaseUptoHandler(ChainHandler):
         self,
         payload: Dict[str, Any],
         requirements: Dict[str, Any],
+        on_transaction_prepared=None,
     ) -> SettlementResult:
         """Execute `x402UptoPermit2Proxy.settle(...)` with the metered actual amount.
 
@@ -269,6 +286,7 @@ class BaseUptoHandler(ChainHandler):
         if not self._signer_private_key:
             return SettlementResult(success=False, error_reason="Signer private key not configured")
 
+        prepared_hash = None
         try:
             web3 = self._web3()
             account = web3.eth.account.from_key(self._signer_private_key)
@@ -314,8 +332,8 @@ class BaseUptoHandler(ChainHandler):
             tx_params: Dict[str, Any] = {
                 "chainId": self._chain_id,
                 "from": signer_address,
-                "nonce": web3.eth.get_transaction_count(signer_address),
-                "gas": max(int(estimated_gas), self._gas_limit),
+                "nonce": web3.eth.get_transaction_count(signer_address, "pending"),
+                "gas": self._transaction_gas_limit(estimated_gas),
             }
             if self._max_fee_per_gas_wei and self._max_priority_fee_per_gas_wei:
                 tx_params["maxFeePerGas"] = self._max_fee_per_gas_wei
@@ -328,6 +346,12 @@ class BaseUptoHandler(ChainHandler):
             raw_tx = getattr(signed, "rawTransaction", None) or getattr(signed, "raw_transaction", None)
             if raw_tx is None:
                 return SettlementResult(success=False, error_reason="Signer returned unexpected encoding")
+
+            prepared_hash = web3.keccak(raw_tx).hex()
+            if not prepared_hash.startswith("0x"):
+                prepared_hash = "0x" + prepared_hash
+            if on_transaction_prepared:
+                on_transaction_prepared(prepared_hash)
 
             tx_hash = web3.eth.send_raw_transaction(raw_tx)
             tx_hash_hex = tx_hash.hex()
@@ -361,17 +385,24 @@ class BaseUptoHandler(ChainHandler):
             return SettlementResult(success=False, error_reason=reason, payer=payer)
         except Exception as exc:
             logger.exception("upto settle unexpected error")
-            return SettlementResult(success=False, error_reason=f"Settlement error: {exc}", payer=payer)
+            return SettlementResult(
+                success=False,
+                transaction_hash=prepared_hash,
+                error_reason=f"Settlement error: {exc}",
+                payer=payer,
+            )
 
-    def check_transaction_status(self, tx_hash: str) -> bool:
+    def get_transaction_status(self, tx_hash: str) -> TransactionStatus:
         if not tx_hash:
-            return False
+            return TransactionStatus.UNKNOWN
         try:
             web3 = self._web3()
             receipt = web3.eth.get_transaction_receipt(tx_hash)
-            return bool(receipt and receipt.status == 1)
+            if receipt is None:
+                return TransactionStatus.PENDING
+            return TransactionStatus.CONFIRMED if receipt.status == 1 else TransactionStatus.FAILED
         except Exception:
-            return False
+            return TransactionStatus.UNKNOWN
 
     # ------------------------------------------------------------------ helpers
     def _web3(self) -> Web3:

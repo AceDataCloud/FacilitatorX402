@@ -1,10 +1,9 @@
-"""
-Base chain handler interface.
-"""
+"""Base chain handler interface."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from enum import Enum
+from typing import Any, Callable, Dict, Optional
 
 
 @dataclass
@@ -28,25 +27,22 @@ class SettlementResult:
     details: Optional[Dict[str, Any]] = None
 
 
+class TransactionStatus(str, Enum):
+    CONFIRMED = "confirmed"
+    PENDING = "pending"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
 class ChainHandler(ABC):
-    """
-    Abstract base class for blockchain payment handlers.
-    Each blockchain (Base, Solana, etc.) implements this interface.
-    """
+    """Abstract interface implemented by every supported payment chain."""
 
     def __init__(self, config: Dict[str, Any]):
-        """
-        Initialize the chain handler.
-
-        Args:
-            config: Chain-specific configuration (RPC URL, signer keys, etc.)
-        """
         self.config = config
 
     @property
     @abstractmethod
     def chain_name(self) -> str:
-        """Return the chain name (e.g., 'base', 'solana')."""
         pass
 
     @abstractmethod
@@ -55,16 +51,6 @@ class ChainHandler(ABC):
         payload: Dict[str, Any],
         requirements: Dict[str, Any],
     ) -> VerificationResult:
-        """
-        Verify the payment authorization signature.
-
-        Args:
-            payload: Payment payload from client
-            requirements: Payment requirements
-
-        Returns:
-            VerificationResult with validation status and payer address
-        """
         pass
 
     @abstractmethod
@@ -72,52 +58,21 @@ class ChainHandler(ABC):
         self,
         payload: Dict[str, Any],
         requirements: Dict[str, Any],
+        on_transaction_prepared: Optional[Callable[[str], None]] = None,
     ) -> SettlementResult:
-        """
-        Settle the payment on-chain (execute the transfer).
-
-        Args:
-            payload: Payment payload from client
-            requirements: Payment requirements
-
-        Returns:
-            SettlementResult with transaction hash and status
-        """
+        """Submit settlement, persisting its deterministic hash before broadcast."""
         pass
 
     @abstractmethod
     def validate_address(self, address: str) -> bool:
-        """
-        Validate if the address format is correct for this chain.
-
-        Args:
-            address: Address to validate
-
-        Returns:
-            True if valid, False otherwise
-        """
         pass
 
+    def get_transaction_status(self, tx_hash: str) -> TransactionStatus:
+        return TransactionStatus.UNKNOWN
+
     def check_transaction_status(self, tx_hash: str) -> bool:
-        """
-        Check if a previously submitted transaction has been confirmed on-chain.
-
-        Args:
-            tx_hash: Transaction hash to check
-
-        Returns:
-            True if confirmed/successful, False otherwise
-        """
-        return False
+        """Backward-compatible boolean status check."""
+        return self.get_transaction_status(tx_hash) == TransactionStatus.CONFIRMED
 
     def get_explorer_url(self, tx_hash: str) -> str:
-        """
-        Get block explorer URL for transaction.
-
-        Args:
-            tx_hash: Transaction hash
-
-        Returns:
-            Explorer URL
-        """
         return f"{self.config.get('explorer_url', '')}/tx/{tx_hash}"

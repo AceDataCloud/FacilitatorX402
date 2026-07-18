@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
@@ -10,7 +11,7 @@ from eth_account.messages import encode_typed_data
 from hexbytes import HexBytes
 from web3 import Web3
 
-from x402f.chain_handlers.base import SettlementResult
+from x402f.chain_handlers.base import SettlementResult, TransactionStatus
 from x402f.models import X402Authorization
 
 
@@ -107,7 +108,7 @@ class X402MultichainViewTests(TestCase):
         payment_requirements = {
             "scheme": "exact",
             "network": "base",
-            "amount": "1000000",
+            "amount": authorization["value"],
             "resource": "https://example.com/resource",
             "description": "Test order",
             "payTo": self.pay_to,
@@ -142,6 +143,21 @@ class X402MultichainViewTests(TestCase):
         record = X402Authorization.objects.first()
         self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
         self.assertEqual(body["payer"], record.payer)
+
+    def test_verify_rejects_exact_underpayment(self):
+        request_payload = self._build_request_payload()
+        request_payload["paymentPayload"]["payload"]["authorization"]["value"] = "249999"
+
+        response = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["isValid"])
+        self.assertIn("Amount mismatch", response.json()["invalidReason"])
+        self.assertEqual(X402Authorization.objects.count(), 0)
 
     def test_verify_rejects_replay(self):
         request_payload = self._build_request_payload()
@@ -195,6 +211,46 @@ class X402MultichainViewTests(TestCase):
         self.assertEqual(record.status, X402Authorization.Status.SETTLED)
         self.assertEqual(record.transaction_hash, "0xabc123")
         settle_mock.assert_called_once()
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_settle_requires_prior_verification(self, settle_mock):
+        settle_mock.return_value = SettlementResult(success=True, transaction_hash="0xshould-not-submit")
+
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(self._build_request_payload()),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["errorReason"], "Payment authorization was not verified.")
+        settle_mock.assert_not_called()
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_settle_fails_closed_when_authorization_db_is_unavailable(self, settle_mock):
+        settle_mock.return_value = SettlementResult(success=True, transaction_hash="0xshould-not-submit")
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        with patch(
+            "x402f.views_multichain.X402Authorization.objects.get",
+            side_effect=RuntimeError("database unavailable"),
+        ):
+            response = self.client.post(
+                reverse("x402:settle"),
+                data=json.dumps(request_payload),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["errorReason"], "Unable to load payment authorization.")
+        settle_mock.assert_not_called()
 
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_is_idempotent_after_settled(self, settle_mock):
@@ -257,10 +313,41 @@ class X402MultichainViewTests(TestCase):
         self.assertEqual(body["transaction"], "0xpending")
 
         record = X402Authorization.objects.get()
-        self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.transaction_hash, "0xpending")
 
-    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.check_transaction_status", return_value=True)
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_definite_prebroadcast_rejection_marks_authorization_failed(self, settle_mock):
+        settle_mock.return_value = SettlementResult(
+            success=False,
+            transaction_hash="0xnever-broadcast",
+            error_reason="SEND_TRANSACTION_FAILED",
+            details={"broadcast_status": "rejected"},
+        )
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(response.json()["success"])
+        self.assertIsNone(response.json()["transaction"])
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.FAILED)
+        self.assertIsNone(record.transaction_hash)
+        self.assertIsNone(record.settling_started_at)
+
+    @patch(
+        "x402f.chain_handlers.base_exact.BaseExactHandler.get_transaction_status",
+        return_value=TransactionStatus.CONFIRMED,
+    )
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_pending_then_reconcile(self, settle_mock, check_mock):
         settle_mock.return_value = SettlementResult(
@@ -301,6 +388,230 @@ class X402MultichainViewTests(TestCase):
         # settle_payment called only once; second call reconciled without re-submitting
         settle_mock.assert_called_once()
         check_mock.assert_called_once_with("0xpending")
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_settle_in_progress_does_not_submit_again(self, settle_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        X402Authorization.objects.update(status=X402Authorization.Status.SETTLING)
+
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["errorReason"], "Settlement is already in progress.")
+        settle_mock.assert_not_called()
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_settled_exact_replay_rejects_requirement_amount_mismatch(self, settle_mock):
+        settle_mock.return_value = SettlementResult(success=True, transaction_hash="0xsettled")
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        first = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        self.assertTrue(first.json()["success"])
+
+        request_payload["paymentRequirements"]["amount"] = "250001"
+        replay = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(replay.json()["success"])
+        self.assertEqual(replay.json()["errorReason"], "Payment requirement mismatch: amount")
+        settle_mock.assert_called_once()
+
+    @override_settings(X402_SETTLEMENT_LEASE_SECONDS=300)
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_settle_reclaims_expired_hashless_claim(self, settle_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        X402Authorization.objects.update(
+            status=X402Authorization.Status.SETTLING,
+            settling_started_at=timezone.now() - timedelta(seconds=301),
+        )
+
+        def settle_with_prepared_hash(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            on_transaction_prepared("0xprepared")
+            self.assertEqual(X402Authorization.objects.get().transaction_hash, "0xprepared")
+            return SettlementResult(success=True, transaction_hash="0xprepared")
+
+        settle_mock.side_effect = settle_with_prepared_hash
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertTrue(response.json()["success"])
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLED)
+        self.assertIsNone(record.settling_started_at)
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_prepared_hash_survives_ambiguous_settlement_error(self, settle_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        def fail_after_prepare(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            on_transaction_prepared("0xambiguous")
+            raise TimeoutError("RPC response lost")
+
+        settle_mock.side_effect = fail_after_prepare
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 500)
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(record.transaction_hash, "0xambiguous")
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_prepared_hash_persistence_conflict_returns_503(self, settle_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        def conflict_before_broadcast(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            X402Authorization.objects.update(transaction_hash="0xconflict")
+            on_transaction_prepared("0xprepared")
+            raise AssertionError("broadcast must not run")
+
+        settle_mock.side_effect = conflict_before_broadcast
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["errorReason"], "Unable to persist prepared settlement transaction.")
+        self.assertEqual(X402Authorization.objects.get().transaction_hash, "0xconflict")
+
+    @patch(
+        "x402f.chain_handlers.base_exact.BaseExactHandler.get_transaction_status",
+        side_effect=[TransactionStatus.PENDING, TransactionStatus.UNKNOWN],
+    )
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_pending_or_unknown_transaction_is_not_resubmitted(self, settle_mock, status_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        X402Authorization.objects.update(
+            status=X402Authorization.Status.SETTLING,
+            transaction_hash="0xpending",
+            settling_started_at=timezone.now() - timedelta(seconds=600),
+        )
+
+        for _ in range(2):
+            response = self.client.post(
+                reverse("x402:settle"),
+                data=json.dumps(request_payload),
+                content_type="application/json",
+            )
+            self.assertEqual(response.json()["errorReason"], "Settlement transaction is pending confirmation.")
+
+        settle_mock.assert_not_called()
+        self.assertEqual(status_mock.call_count, 2)
+
+    @override_settings(X402_SETTLE_TOKEN="settle-test-token")
+    @patch(
+        "x402f.chain_handlers.base_upto.BaseUptoHandler.get_transaction_status",
+        return_value=TransactionStatus.CONFIRMED,
+    )
+    def test_upto_reconcile_preserves_and_binds_settled_amount(self, status_mock):
+        payment_payload = {
+            "x402Version": 2,
+            "scheme": "upto",
+            "network": "base",
+            "payload": {
+                "signature": "0xtest",
+                "permit2Authorization": {"nonce": "42"},
+            },
+        }
+        stored_requirements = {
+            "scheme": "upto",
+            "network": "base",
+            "payTo": self.pay_to,
+            "asset": self.usdc_contract,
+            "maxAmountRequired": "1000",
+        }
+        X402Authorization.objects.create(
+            nonce="upto:base:42",
+            payer=self.payer_account.address,
+            pay_to=self.pay_to,
+            value="1000",
+            valid_after=timezone.now(),
+            valid_before=timezone.now() + timedelta(minutes=10),
+            signature="0xtest",
+            payment_requirements=stored_requirements,
+            payment_payload=payment_payload,
+            scheme="upto",
+            status=X402Authorization.Status.SETTLING,
+            transaction_hash="0xpending",
+            settled_amount="100",
+            settling_started_at=timezone.now(),
+        )
+        request_payload = {
+            "paymentPayload": payment_payload,
+            "paymentRequirements": {**stored_requirements, "amount": "100"},
+        }
+
+        reconciled = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+            HTTP_X_SETTLEMENT_TOKEN="settle-test-token",
+        )
+
+        self.assertTrue(reconciled.json()["success"])
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLED)
+        self.assertEqual(record.settled_amount, "100")
+
+        request_payload["paymentRequirements"]["amount"] = "101"
+        replay = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+            HTTP_X_SETTLEMENT_TOKEN="settle-test-token",
+        )
+
+        self.assertFalse(replay.json()["success"])
+        self.assertEqual(replay.json()["errorReason"], "Payment requirement mismatch: settled amount")
+        status_mock.assert_called_once_with("0xpending")
 
     def test_supported_lists_networks(self):
         response = self.client.get(reverse("x402:supported"))

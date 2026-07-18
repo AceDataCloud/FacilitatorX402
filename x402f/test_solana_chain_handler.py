@@ -71,7 +71,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         amount = 1000
         transfer_data = bytes([12]) + amount.to_bytes(8, "little") + bytes([6])
         transfer_ix = Ix(2, [5, 6, 7, 8], transfer_data)
-        memo_ix = Ix(4, [], b"hello")
+        memo_ix = Ix(4, [], b"00" * 16)
 
         tx = self._make_tx(
             account_keys=account_keys,
@@ -109,6 +109,7 @@ class SolanaInstructionStructureTests(unittest.TestCase):
             dest,
             authority,
             pay_to,
+            MEMO_PROGRAM_ID,
         ]
 
         class Ix:
@@ -123,10 +124,11 @@ class SolanaInstructionStructureTests(unittest.TestCase):
         transfer_data = bytes([12]) + amount.to_bytes(8, "little") + bytes([6])
         transfer_ix = Ix(2, [4, 5, 6, 7], transfer_data)
         ledger_ix = Ix(3, [4], bytes([0]) * 10)
+        memo_ix = Ix(9, [], b"00" * 16)
 
         tx = self._make_tx(
             account_keys=account_keys,
-            instructions=[cb_limit, cb_price, transfer_ix, ledger_ix],
+            instructions=[cb_limit, cb_price, transfer_ix, ledger_ix, memo_ix],
         )
 
         requirements = {

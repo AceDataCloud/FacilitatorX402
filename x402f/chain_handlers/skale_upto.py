@@ -14,3 +14,7 @@ from .base_upto import BaseUptoHandler
 
 class SkaleUptoHandler(BaseUptoHandler):
     """Handler for the x402 `upto` scheme on SKALE Base."""
+
+    def _transaction_gas_limit(self, estimated_gas: int) -> int:
+        # SKALE Base currently returns its 50M RPC cap for every estimate.
+        return self._gas_limit
