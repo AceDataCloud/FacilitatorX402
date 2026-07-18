@@ -137,13 +137,13 @@ def test_skale_upto_uses_gateway_chain_id_by_default(monkeypatch):
     from x402f.views_multichain import _get_chain_config
 
     assert _get_chain_config("skale")["chain_id"] == SKALE_CHAIN_ID
-    assert _get_chain_config("skale")["gas_limit"] == 2000000
+    assert _get_chain_config("skale")["gas_limit"] == 50000000
 
 
 def test_skale_upto_ignores_unreliable_rpc_gas_estimate():
-    handler = SkaleUptoHandler({"chain_id": SKALE_CHAIN_ID, "gas_limit": 2000000})
+    handler = SkaleUptoHandler({"chain_id": SKALE_CHAIN_ID, "gas_limit": 50000000})
 
-    assert handler._transaction_gas_limit(50000000) == 2000000
+    assert handler._transaction_gas_limit(50000000) == 50000000
 
 
 def test_supported_upto_entries_include_chain_id(monkeypatch):
