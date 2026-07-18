@@ -3036,6 +3036,23 @@ typing-extensions = {version = ">=4.10.0", markers = "python_version < \"3.13\""
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
 
 [[package]]
+name = "tencentcloud-sdk-python"
+version = "3.1.135"
+description = "Tencent Cloud SDK for Python"
+optional = false
+python-versions = "*"
+files = [
+    {file = "tencentcloud_sdk_python-3.1.135-py2.py3-none-any.whl", hash = "sha256:2153dfe957f5bda5d8aa68ad56351248a769ba5910ca48ba8d9c1b5a61568dfd"},
+    {file = "tencentcloud_sdk_python-3.1.135.tar.gz", hash = "sha256:91d87b9bd4478bcc94a79b71f7bcc2ffb9d5afff5ae83d8d0f2e04f860abd814"},
+]
+
+[package.dependencies]
+requests = ">=2.16.0"
+
+[package.extras]
+async = ["httpx (>=0.22.0)"]
+
+[[package]]
 name = "toolz"
 version = "1.1.0"
 description = "List processing tools and functional utilities"
@@ -3640,4 +3657,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "28e562b684b9f8278a3066fec32af00bad41f597c67477d0f7924065dca612cf"
+content-hash = "e679289468ff94a091d87c9265f4cc4a1dca90b62d08508e876340c8d3df9494"
