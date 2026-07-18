@@ -152,7 +152,10 @@ class SkaleExactHandler(BaseExactHandler):
                 if not failed_tx_hash.startswith("0x"):
                     failed_tx_hash = "0x" + failed_tx_hash
                 return SettlementResult(
-                    success=False, transaction_hash=failed_tx_hash, error_reason="Transaction reverted on SKALE chain"
+                    success=False,
+                    transaction_hash=failed_tx_hash,
+                    error_reason="Transaction reverted on SKALE chain",
+                    details={"transaction_status": "failed"},
                 )
 
             tx_hash_hex = tx_hash.hex()

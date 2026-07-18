@@ -120,11 +120,9 @@ def test_factory_dispatches_base_upto():
     assert isinstance(h, BaseUptoHandler)
 
 
-def test_factory_dispatches_skale_upto():
-    h = ChainHandlerFactory.create("skale", {"chain_id": SKALE_CHAIN_ID}, scheme="upto")
-    assert isinstance(h, SkaleUptoHandler)
-    # SkaleUptoHandler is a thin subclass of BaseUptoHandler
-    assert isinstance(h, BaseUptoHandler)
+def test_factory_rejects_skale_upto():
+    with pytest.raises(ValueError, match="Unsupported"):
+        ChainHandlerFactory.create("skale", {"chain_id": SKALE_CHAIN_ID}, scheme="upto")
 
 
 def test_skale_upto_uses_gateway_chain_id_by_default(monkeypatch):
@@ -165,9 +163,8 @@ def test_supported_upto_entries_include_chain_id(monkeypatch):
     kinds = response.data["kinds"]
 
     base_upto = next(item for item in kinds if item["network"] == "base" and item["scheme"] == "upto")
-    skale_upto = next(item for item in kinds if item["network"] == "skale" and item["scheme"] == "upto")
     assert base_upto["extra"]["chainId"] == CHAIN_ID
-    assert skale_upto["extra"]["chainId"] == SKALE_CHAIN_ID
+    assert not any(item["network"] == "skale" and item["scheme"] == "upto" for item in kinds)
 
 
 def test_factory_unsupported_scheme_raises():

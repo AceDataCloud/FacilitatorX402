@@ -1,7 +1,7 @@
 """
 Factory for creating chain handlers.
 
-Dispatch key is (network, scheme). The `upto` scheme is EVM-only (Base / Skale).
+Dispatch key is (network, scheme). The `upto` scheme is currently Base-only.
 """
 
 from typing import Any, Dict, Tuple, Type
@@ -10,7 +10,6 @@ from .base import ChainHandler
 from .base_exact import BaseExactHandler
 from .base_upto import BaseUptoHandler
 from .skale_exact import SkaleExactHandler
-from .skale_upto import SkaleUptoHandler
 from .solana_exact import SolanaExactHandler
 
 
@@ -23,7 +22,6 @@ class ChainHandlerFactory:
         ("solana-devnet", "exact"): SolanaExactHandler,
         ("skale", "exact"): SkaleExactHandler,
         ("base", "upto"): BaseUptoHandler,
-        ("skale", "upto"): SkaleUptoHandler,
     }
 
     @classmethod
