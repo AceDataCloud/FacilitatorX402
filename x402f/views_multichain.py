@@ -53,7 +53,8 @@ def _signer_lock(network: str):
     if connection.vendor != "postgresql":
         yield
         return
-    lock_id = zlib.crc32(f"x402:{network}:signer".encode("utf-8"))
+    canonical_network = network.strip().lower()
+    lock_id = zlib.crc32(f"x402:{canonical_network}:signer".encode("utf-8"))
     with connection.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_lock(%s)", [lock_id])
     try:
@@ -501,13 +502,15 @@ class X402SettleView(APIView):
         # Mirror verify-time nonce prefixing so we can look up the right record.
         stored_nonce = f"{scheme}:{network}:{nonce}" if scheme != "exact" else str(nonce)
         claimed_record_id = None
+        claim_started_at = None
 
         def release_unsubmitted_claim() -> None:
-            if claimed_record_id is not None:
+            if claimed_record_id is not None and claim_started_at is not None:
                 X402Authorization.objects.filter(
                     pk=claimed_record_id,
                     status=X402Authorization.Status.SETTLING,
                     transaction_hash__isnull=True,
+                    settling_started_at=claim_started_at,
                 ).update(
                     status=X402Authorization.Status.VERIFIED,
                     settling_started_at=None,
@@ -625,6 +628,30 @@ class X402SettleView(APIView):
             handler = ChainHandlerFactory.create(network, config, scheme=scheme)
 
             if record.transaction_hash:
+                observed_tx_hash = record.transaction_hash
+
+                def reconciliation_conflict_response() -> Response:
+                    record.refresh_from_db()
+                    if record.status == X402Authorization.Status.SETTLED:
+                        return Response(
+                            {
+                                "success": True,
+                                "errorReason": None,
+                                "transaction": record.transaction_hash,
+                                "network": network,
+                                "payer": record.payer,
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+                    return Response(
+                        {
+                            "success": False,
+                            "errorReason": "Settlement state changed; retry.",
+                            "transaction": record.transaction_hash,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
                 # Reconcile: if a previous settle attempt left a tx hash, check on-chain
                 logger.debug(
                     "x402 settlement reconcile check: trace_id={} network={} nonce={} tx={}",
@@ -633,34 +660,32 @@ class X402SettleView(APIView):
                     nonce,
                     record.transaction_hash,
                 )
-                tx_status = handler.get_transaction_status(record.transaction_hash)
+                tx_status = handler.get_transaction_status(observed_tx_hash)
                 if tx_status == TransactionStatus.CONFIRMED:
-                    record.mark_settled(
-                        record.transaction_hash,
-                        settled_amount=record.settled_amount if scheme == "upto" else None,
+                    reconciled = X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash=observed_tx_hash,
+                    ).update(
+                        status=X402Authorization.Status.SETTLED,
+                        settled_at=timezone.now(),
+                        settling_started_at=None,
+                        updated_at=timezone.now(),
                     )
-                    record.save(
-                        update_fields=[
-                            "status",
-                            "transaction_hash",
-                            "settled_at",
-                            "settled_amount",
-                            "settling_started_at",
-                            "updated_at",
-                        ]
-                    )
+                    if reconciled != 1:
+                        return reconciliation_conflict_response()
                     logger.info(
                         "x402 settlement reconciled: trace_id={} network={} nonce={} tx={}",
                         trace_id,
                         network,
                         nonce,
-                        record.transaction_hash,
+                        observed_tx_hash,
                     )
                     return Response(
                         {
                             "success": True,
                             "errorReason": None,
-                            "transaction": record.transaction_hash,
+                            "transaction": observed_tx_hash,
                             "network": network,
                             "payer": record.payer,
                         },
@@ -668,19 +693,32 @@ class X402SettleView(APIView):
                     )
                 if tx_status == TransactionStatus.FAILED:
                     if str(network).lower().startswith("solana"):
-                        X402Authorization.objects.filter(pk=record.pk).update(status=X402Authorization.Status.FAILED)
+                        reconciled = X402Authorization.objects.filter(
+                            pk=record.pk,
+                            status=X402Authorization.Status.SETTLING,
+                            transaction_hash=observed_tx_hash,
+                        ).update(
+                            status=X402Authorization.Status.FAILED,
+                            settling_started_at=None,
+                        )
                     else:
-                        X402Authorization.objects.filter(pk=record.pk).update(
+                        reconciled = X402Authorization.objects.filter(
+                            pk=record.pk,
+                            status=X402Authorization.Status.SETTLING,
+                            transaction_hash=observed_tx_hash,
+                        ).update(
                             status=X402Authorization.Status.VERIFIED,
                             transaction_hash=None,
                             settling_started_at=None,
                             settled_amount=None,
                         )
+                    if reconciled != 1:
+                        return reconciliation_conflict_response()
                     return Response(
                         {
                             "success": False,
                             "errorReason": "Settlement transaction failed on-chain.",
-                            "transaction": record.transaction_hash,
+                            "transaction": observed_tx_hash,
                         },
                         status=status.HTTP_200_OK,
                     )
@@ -709,9 +747,10 @@ class X402SettleView(APIView):
                     status=status.HTTP_200_OK,
                 )
 
+            claim_started_at = timezone.now()
             claim_updates = {
                 "status": X402Authorization.Status.SETTLING,
-                "settling_started_at": timezone.now(),
+                "settling_started_at": claim_started_at,
             }
             if scheme == "upto":
                 claim_updates["settled_amount"] = str(incoming_amount)
@@ -749,7 +788,7 @@ class X402SettleView(APIView):
                     status=status.HTTP_200_OK,
                 )
             record.status = X402Authorization.Status.SETTLING
-            record.settling_started_at = timezone.now()
+            record.settling_started_at = claim_started_at
             if scheme == "upto":
                 record.settled_amount = str(incoming_amount)
             claimed_record_id = record.pk
@@ -760,6 +799,7 @@ class X402SettleView(APIView):
                         pk=record.pk,
                         status=X402Authorization.Status.SETTLING,
                         transaction_hash__isnull=True,
+                        settling_started_at=claim_started_at,
                     ).update(transaction_hash=tx_hash)
                 except Exception as exc:
                     raise X402SettlementPersistenceError(
@@ -779,7 +819,11 @@ class X402SettleView(APIView):
 
             if not result.success:
                 if (result.details or {}).get("broadcast_status") == "rejected":
-                    X402Authorization.objects.filter(pk=record.pk).update(
+                    X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        settling_started_at=claim_started_at,
+                    ).update(
                         status=X402Authorization.Status.FAILED,
                         transaction_hash=None,
                         settling_started_at=None,
@@ -788,6 +832,21 @@ class X402SettleView(APIView):
                     record.status = X402Authorization.Status.FAILED
                     record.transaction_hash = None
                     result.transaction_hash = None
+                elif (result.details or {}).get("transaction_status") == "failed":
+                    released = X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash=result.transaction_hash,
+                        settling_started_at=claim_started_at,
+                    ).update(
+                        status=X402Authorization.Status.VERIFIED,
+                        transaction_hash=None,
+                        settling_started_at=None,
+                        settled_amount=None,
+                    )
+                    if released == 1:
+                        record.status = X402Authorization.Status.VERIFIED
+                        record.transaction_hash = None
                 # Persist tx hash for future reconciliation even on failure
                 elif record and result.transaction_hash and not record.transaction_hash:
                     record.transaction_hash = result.transaction_hash
@@ -800,6 +859,7 @@ class X402SettleView(APIView):
                         pk=record.pk,
                         status=X402Authorization.Status.SETTLING,
                         transaction_hash__isnull=True,
+                        settling_started_at=claim_started_at,
                     ).update(
                         status=X402Authorization.Status.VERIFIED,
                         settling_started_at=None,
@@ -828,21 +888,19 @@ class X402SettleView(APIView):
 
             # Mark as settled
             if record:
-                record.mark_settled(
-                    result.transaction_hash,
-                    settled_amount=(result.details or {}).get("amount"),
-                )
-                record.settling_started_at = None
+                settled_amount = (result.details or {}).get("amount")
                 try:
-                    record.save(
-                        update_fields=[
-                            "status",
-                            "transaction_hash",
-                            "settled_at",
-                            "settled_amount",
-                            "settling_started_at",
-                            "updated_at",
-                        ]
+                    settled = X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash=result.transaction_hash,
+                        settling_started_at=claim_started_at,
+                    ).update(
+                        status=X402Authorization.Status.SETTLED,
+                        settled_at=timezone.now(),
+                        settled_amount=str(settled_amount) if settled_amount is not None else None,
+                        settling_started_at=None,
+                        updated_at=timezone.now(),
                     )
                 except Exception as save_exc:
                     logger.error("x402 settled but failed to persist result: {}", save_exc)
@@ -854,6 +912,20 @@ class X402SettleView(APIView):
                         },
                         status=status.HTTP_503_SERVICE_UNAVAILABLE,
                     )
+                if settled != 1:
+                    record.refresh_from_db()
+                    if not (
+                        record.status == X402Authorization.Status.SETTLED
+                        and record.transaction_hash == result.transaction_hash
+                    ):
+                        return Response(
+                            {
+                                "success": False,
+                                "errorReason": "Settlement confirmed but claim ownership changed.",
+                                "transaction": result.transaction_hash,
+                            },
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        )
 
             logger.info(
                 "x402 settlement succeeded: trace_id={} network={} nonce={} tx={} payer={} amount={}",

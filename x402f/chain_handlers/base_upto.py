@@ -366,6 +366,7 @@ class BaseUptoHandler(ChainHandler):
                     transaction_hash=tx_hash_hex,
                     payer=payer,
                     error_reason="Settlement transaction reverted on-chain",
+                    details={"transaction_status": "failed"},
                 )
 
             return SettlementResult(

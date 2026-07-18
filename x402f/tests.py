@@ -13,6 +13,7 @@ from web3 import Web3
 
 from x402f.chain_handlers.base import SettlementResult, TransactionStatus
 from x402f.models import X402Authorization
+from x402f.views_multichain import _signer_lock
 
 
 class X402MultichainViewTests(TestCase):
@@ -127,6 +128,17 @@ class X402MultichainViewTests(TestCase):
             "paymentRequirements": payment_requirements,
         }
 
+    def _successful_settlement(self, tx_hash: str = "0xabc123"):
+        def settle(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            on_transaction_prepared(tx_hash)
+            return SettlementResult(
+                success=True,
+                transaction_hash=tx_hash,
+                payer=self.payer_account.address,
+            )
+
+        return settle
+
     def test_verify_persists_authorization(self):
         request_payload = self._build_request_payload()
 
@@ -182,11 +194,7 @@ class X402MultichainViewTests(TestCase):
 
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_marks_authorization_settled(self, settle_mock):
-        settle_mock.return_value = SettlementResult(
-            success=True,
-            transaction_hash="0xabc123",
-            payer=self.payer_account.address,
-        )
+        settle_mock.side_effect = self._successful_settlement()
         request_payload = self._build_request_payload()
 
         verify_response = self.client.post(
@@ -254,11 +262,7 @@ class X402MultichainViewTests(TestCase):
 
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_is_idempotent_after_settled(self, settle_mock):
-        settle_mock.return_value = SettlementResult(
-            success=True,
-            transaction_hash="0xabc123",
-            payer=self.payer_account.address,
-        )
+        settle_mock.side_effect = self._successful_settlement()
         request_payload = self._build_request_payload()
 
         verify_response = self.client.post(
@@ -315,6 +319,76 @@ class X402MultichainViewTests(TestCase):
         record = X402Authorization.objects.get()
         self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.transaction_hash, "0xpending")
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_mined_evm_failure_releases_authorization_claim(self, settle_mock):
+        def fail_after_prepare(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            on_transaction_prepared("0xreverted")
+            return SettlementResult(
+                success=False,
+                transaction_hash="0xreverted",
+                error_reason="Transaction reverted on-chain",
+                details={"transaction_status": "failed"},
+            )
+
+        settle_mock.side_effect = fail_after_prepare
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], "0xreverted")
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.VERIFIED)
+        self.assertIsNone(record.transaction_hash)
+        self.assertIsNone(record.settling_started_at)
+        self.assertIsNone(record.settled_amount)
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_stale_mined_failure_does_not_clear_newer_transaction(self, settle_mock):
+        def fail_after_newer_claim(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            on_transaction_prepared("0xold")
+            X402Authorization.objects.update(
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash="0xnew",
+                settling_started_at=timezone.now(),
+            )
+            return SettlementResult(
+                success=False,
+                transaction_hash="0xold",
+                error_reason="Transaction reverted on-chain",
+                details={"transaction_status": "failed"},
+            )
+
+        settle_mock.side_effect = fail_after_newer_claim
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], "0xold")
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(record.transaction_hash, "0xnew")
+        self.assertIsNotNone(record.settling_started_at)
 
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_definite_prebroadcast_rejection_marks_authorization_failed(self, settle_mock):
@@ -389,6 +463,68 @@ class X402MultichainViewTests(TestCase):
         settle_mock.assert_called_once()
         check_mock.assert_called_once_with("0xpending")
 
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.get_transaction_status")
+    def test_stale_confirmed_reconcile_does_not_overwrite_newer_transaction(self, status_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        X402Authorization.objects.update(
+            status=X402Authorization.Status.SETTLING,
+            transaction_hash="0xold",
+            settling_started_at=timezone.now(),
+        )
+
+        def replace_hash(_tx_hash):
+            X402Authorization.objects.update(transaction_hash="0xnew")
+            return TransactionStatus.CONFIRMED
+
+        status_mock.side_effect = replace_hash
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], "0xnew")
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(record.transaction_hash, "0xnew")
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.get_transaction_status")
+    def test_stale_failed_reconcile_does_not_clear_newer_transaction(self, status_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        X402Authorization.objects.update(
+            status=X402Authorization.Status.SETTLING,
+            transaction_hash="0xold",
+            settling_started_at=timezone.now(),
+        )
+
+        def replace_hash(_tx_hash):
+            X402Authorization.objects.update(transaction_hash="0xnew")
+            return TransactionStatus.FAILED
+
+        status_mock.side_effect = replace_hash
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], "0xnew")
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(record.transaction_hash, "0xnew")
+
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settle_in_progress_does_not_submit_again(self, settle_mock):
         request_payload = self._build_request_payload()
@@ -411,7 +547,7 @@ class X402MultichainViewTests(TestCase):
 
     @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
     def test_settled_exact_replay_rejects_requirement_amount_mismatch(self, settle_mock):
-        settle_mock.return_value = SettlementResult(success=True, transaction_hash="0xsettled")
+        settle_mock.side_effect = self._successful_settlement("0xsettled")
         request_payload = self._build_request_payload()
         self.client.post(
             reverse("x402:verify"),
@@ -516,6 +652,40 @@ class X402MultichainViewTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["errorReason"], "Unable to persist prepared settlement transaction.")
         self.assertEqual(X402Authorization.objects.get().transaction_hash, "0xconflict")
+
+    @patch("x402f.chain_handlers.base_exact.BaseExactHandler.settle_payment")
+    def test_expired_claimant_cannot_persist_hash_into_newer_lease(self, settle_mock):
+        request_payload = self._build_request_payload()
+        self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+        newer_lease = timezone.now() + timedelta(seconds=1)
+
+        def stale_claimant(payload, requirements, on_transaction_prepared):  # noqa: ARG001
+            X402Authorization.objects.update(
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash=None,
+                settling_started_at=newer_lease,
+                settled_amount="newer",
+            )
+            on_transaction_prepared("0xstale")
+            raise AssertionError("broadcast must not run after losing the lease")
+
+        settle_mock.side_effect = stale_claimant
+        response = self.client.post(
+            reverse("x402:settle"),
+            data=json.dumps(request_payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 503)
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertIsNone(record.transaction_hash)
+        self.assertEqual(record.settling_started_at, newer_lease)
+        self.assertEqual(record.settled_amount, "newer")
 
     @patch(
         "x402f.chain_handlers.base_exact.BaseExactHandler.get_transaction_status",
@@ -622,6 +792,33 @@ class X402MultichainViewTests(TestCase):
         networks = [k["network"] for k in kinds]
         self.assertIn("base", networks)
         self.assertIn("solana", networks)
+
+    def test_signer_lock_canonicalizes_network_name(self):
+        lock_ids = []
+
+        class FakeCursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):  # noqa: ANN002
+                return None
+
+            def execute(self, sql, params):  # noqa: ARG002, ANN001
+                lock_ids.append(params[0])
+
+        class FakeConnection:
+            vendor = "postgresql"
+
+            def cursor(self):
+                return FakeCursor()
+
+        with patch("x402f.views_multichain.connection", FakeConnection()):
+            with _signer_lock(" BASE "):
+                pass
+            with _signer_lock("base"):
+                pass
+
+        self.assertEqual(lock_ids[0], lock_ids[2])
 
     def test_well_known_returns_machine_readable_metadata(self):
         response = self.client.get("/.well-known/x402")
