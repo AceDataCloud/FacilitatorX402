@@ -114,7 +114,7 @@ spec:
             - name: X402_SKALE_CHAIN_ID
               value: "1187947933"
             - name: X402_SKALE_GAS_LIMIT
-              value: "400000"
+              value: "2000000"
             - name: X402_BASE_PAY_TO
               valueFrom:
                 secretKeyRef:

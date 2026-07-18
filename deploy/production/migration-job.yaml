@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${MIGRATION_JOB}
+  namespace: acedatacloud
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: facilitator-migrate
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: docker-registry
+      containers:
+        - name: migrate
+          image: ghcr.io/acedatacloud/facilitator-backend:${TAG}
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - manage.py
+            - migrate
+            - --noinput
+          envFrom:
+            - secretRef:
+                name: pgsql
+          env:
+            - name: APP_ENV
+              value: production
+            - name: APP_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SECRET_KEY
+                  name: app
+                  optional: false
+            - name: PGSQL_DATABASE_FACILITATOR
+              value: acedatacloud_facilitator
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
