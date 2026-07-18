@@ -192,7 +192,7 @@ def _get_chain_config(network: str) -> Dict[str, Any]:
             "signer_private_key": getattr(settings, "X402_SKALE_SIGNER_PRIVATE_KEY", ""),
             "signer_address": getattr(settings, "X402_SKALE_SIGNER_ADDRESS", ""),
             "fee_payer": getattr(settings, "X402_SKALE_FEE_PAYER", ""),
-            "gas_limit": getattr(settings, "X402_SKALE_GAS_LIMIT", 2000000),
+            "gas_limit": getattr(settings, "X402_SKALE_GAS_LIMIT", 50000000),
             "chain_id": getattr(settings, "X402_SKALE_CHAIN_ID", 1187947933),
             "tx_timeout_seconds": getattr(settings, "X402_TX_TIMEOUT_SECONDS", 120),
         }
