@@ -10,7 +10,7 @@ from loguru import logger
 from web3 import HTTPProvider, Web3
 from web3.exceptions import BadFunctionCallOutput, ContractLogicError
 
-from .base import ChainHandler, SettlementResult, VerificationResult
+from .base import ChainHandler, SettlementResult, TransactionStatus, VerificationResult
 
 # USDC transferWithAuthorization ABI
 USDC_TRANSFER_WITH_AUTHORIZATION_ABI = [
@@ -127,9 +127,9 @@ class BaseExactHandler(ChainHandler):
             except (TypeError, ValueError):
                 return VerificationResult(is_valid=False, invalid_reason="Invalid amount in payload or requirements")
 
-            if auth_value > max_amount:
+            if auth_value != max_amount:
                 return VerificationResult(
-                    is_valid=False, invalid_reason=f"Amount exceeds limit: {auth_value} > {max_amount}"
+                    is_valid=False, invalid_reason=f"Amount mismatch: {auth_value} != {max_amount}"
                 )
 
             domain_name = extra.get("name") or extra.get("domain", {}).get("name")
@@ -221,10 +221,12 @@ class BaseExactHandler(ChainHandler):
         self,
         payload: Dict[str, Any],
         requirements: Dict[str, Any],
+        on_transaction_prepared=None,
     ) -> SettlementResult:
         """
         Execute USDC transferWithAuthorization on Base chain.
         """
+        prepared_hash = None
         try:
             # Get configuration
             rpc_url = self.config.get("rpc_url", "")
@@ -295,7 +297,7 @@ class BaseExactHandler(ChainHandler):
             tx_params = {
                 "chainId": self.CHAIN_ID,
                 "from": signer_address,
-                "nonce": web3.eth.get_transaction_count(signer_address),
+                "nonce": web3.eth.get_transaction_count(signer_address, "pending"),
                 "gas": max(estimated_gas, gas_limit),
                 "gasPrice": web3.eth.gas_price,
             }
@@ -309,6 +311,12 @@ class BaseExactHandler(ChainHandler):
                 raw_tx = getattr(signed, "raw_transaction", None)
             if raw_tx is None:
                 return SettlementResult(success=False, error_reason="Signer returned unexpected transaction encoding")
+
+            prepared_hash = web3.keccak(raw_tx).hex()
+            if not prepared_hash.startswith("0x"):
+                prepared_hash = "0x" + prepared_hash
+            if on_transaction_prepared:
+                on_transaction_prepared(prepared_hash)
 
             # Send transaction
             tx_hash = web3.eth.send_raw_transaction(raw_tx)
@@ -345,7 +353,11 @@ class BaseExactHandler(ChainHandler):
 
         except Exception as e:
             logger.error(f"Base chain settlement error: {e}")
-            return SettlementResult(success=False, error_reason=f"Settlement error: {str(e)}")
+            return SettlementResult(
+                success=False,
+                transaction_hash=prepared_hash,
+                error_reason=f"Settlement error: {str(e)}",
+            )
 
     def _map_contract_error(self, exc: ContractLogicError) -> str:
         """Map contract errors to user-friendly messages."""
@@ -356,18 +368,19 @@ class BaseExactHandler(ChainHandler):
             return "Facilitator has insufficient ETH for gas"
         return "Settlement transaction reverted on-chain"
 
-    def check_transaction_status(self, tx_hash: str) -> bool:
-        """Check if a Base chain transaction has been confirmed."""
+    def get_transaction_status(self, tx_hash: str) -> TransactionStatus:
         try:
             rpc_url = self.config.get("rpc_url", "")
             if not rpc_url:
-                return False
+                return TransactionStatus.UNKNOWN
             web3 = Web3(HTTPProvider(rpc_url))
             receipt = web3.eth.get_transaction_receipt(tx_hash)
-            return receipt is not None and receipt.status == 1
+            if receipt is None:
+                return TransactionStatus.PENDING
+            return TransactionStatus.CONFIRMED if receipt.status == 1 else TransactionStatus.FAILED
         except Exception as exc:
             logger.warning(f"check_transaction_status({tx_hash}): {exc}")
-            return False
+            return TransactionStatus.UNKNOWN
 
     def get_explorer_url(self, tx_hash: str) -> str:
         """Get BaseScan explorer URL."""

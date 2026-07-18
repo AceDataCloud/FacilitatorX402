@@ -26,9 +26,11 @@ from x402f.chain_handlers.base_upto import (
     ERR_FACILITATOR_MISMATCH,
     ERR_INVALID_SIGNATURE,
     ERR_INVALID_SPENDER,
+    ERR_NOT_YET_VALID,
     ERR_RECIPIENT_MISMATCH,
     ERR_TOKEN_MISMATCH,
     _parse_upto_payload,
+    _split_settle_revert,
 )
 from x402f.chain_handlers.upto_constants import (
     PERMIT2_ADDRESS,
@@ -44,6 +46,10 @@ FACILITATOR_EOA = None  # filled per-test from the signer account
 
 # Deterministic test wallet (not used on-chain)
 TEST_PRIVATE_KEY = "0x" + "11" * 32
+
+
+def test_custom_payment_too_early_selector_is_actionable():
+    assert _split_settle_revert(Exception("execution reverted: 0xa65539fa")) == ERR_NOT_YET_VALID
 
 
 def _make_signer():
@@ -131,6 +137,13 @@ def test_skale_upto_uses_gateway_chain_id_by_default(monkeypatch):
     from x402f.views_multichain import _get_chain_config
 
     assert _get_chain_config("skale")["chain_id"] == SKALE_CHAIN_ID
+    assert _get_chain_config("skale")["gas_limit"] == 400000
+
+
+def test_skale_upto_ignores_unreliable_rpc_gas_estimate():
+    handler = SkaleUptoHandler({"chain_id": SKALE_CHAIN_ID, "gas_limit": 400000})
+
+    assert handler._transaction_gas_limit(50000000) == 400000
 
 
 def test_supported_upto_entries_include_chain_id(monkeypatch):

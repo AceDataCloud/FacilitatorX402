@@ -31,6 +31,29 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install poetry==1.8.5
+          poetry install
+
+      - name: Run payment tests
+        env:
+          DATABASE_ENGINE: django.db.backends.sqlite3
+          PGSQL_DATABASE_FACILITATOR: ":memory:"
+        run: poetry run python -m pytest x402f/tests -q
+
   docker:
     name: Docker Build
     runs-on: ubuntu-latest

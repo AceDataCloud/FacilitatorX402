@@ -13,10 +13,9 @@ spec:
     matchLabels:
       app: facilitator-backend
   strategy:
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 25%
-    type: RollingUpdate
+    # Settlement state semantics changed in this release. Never overlap pods
+    # running incompatible idempotency logic during deployment.
+    type: Recreate
   template:
     metadata:
       labels:
@@ -114,6 +113,8 @@ spec:
                   optional: true
             - name: X402_SKALE_CHAIN_ID
               value: "1187947933"
+            - name: X402_SKALE_GAS_LIMIT
+              value: "400000"
             - name: X402_BASE_PAY_TO
               valueFrom:
                 secretKeyRef:
@@ -136,6 +137,12 @@ spec:
               value: "250000"
             - name: X402_TX_TIMEOUT_SECONDS
               value: "120"
+            - name: X402_SETTLE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: SETTLE_TOKEN
+                  name: x402
+                  optional: false
             - name: X402_MAX_FEE_PER_GAS_WEI
               value: "0"
             - name: X402_MAX_PRIORITY_FEE_PER_GAS_WEI

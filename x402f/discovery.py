@@ -32,6 +32,7 @@ CACHE_TTL_SECONDS = 300
 def _build_accepts() -> List[Dict[str, Any]]:
     base_pay_to = os.environ.get("X402_BASE_PAY_TO", "").strip()
     solana_pay_to = os.environ.get("X402_SOLANA_PAY_TO", "").strip()
+    solana_fee_payer = os.environ.get("X402_SOLANA_SIGNER_ADDRESS", "").strip()
 
     accepts: List[Dict[str, Any]] = []
 
@@ -63,7 +64,12 @@ def _build_accepts() -> List[Dict[str, Any]]:
                 "maxAmountRequired": "0",
                 "maxTimeoutSeconds": 120,
                 "mimeType": "application/json",
-                "extra": {"decimals": 6, "computeUnitLimit": 200_000, "computeUnitPriceMicroLamports": 1},
+                "extra": {
+                    "decimals": 6,
+                    "feePayer": solana_fee_payer,
+                    "computeUnitLimit": 100_000,
+                    "computeUnitPriceMicroLamports": 5_000,
+                },
             }
         )
 

@@ -26,13 +26,14 @@ from solana.rpc.commitment import Confirmed
 from solana.rpc.types import TxOpts
 from solders.instruction import CompiledInstruction
 from solders.keypair import Keypair
+from solders.message import MessageV0
 from solders.pubkey import Pubkey
 from solders.signature import Signature as SolSignature
 from solders.transaction import VersionedTransaction
 from spl.token.constants import ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID
 from spl.token.instructions import get_associated_token_address
 
-from .base import ChainHandler, SettlementResult, VerificationResult
+from .base import ChainHandler, SettlementResult, TransactionStatus, VerificationResult
 
 # Solana program IDs
 COMPUTE_BUDGET_PROGRAM_ID = Pubkey.from_string("ComputeBudget111111111111111111111111111111")
@@ -53,8 +54,8 @@ class SolanaExactHandler(ChainHandler):
 
     CLUSTER = "mainnet-beta"
 
-    # x402 spec: compute unit price must not exceed 5 lamports
-    MAX_COMPUTE_UNIT_PRICE = 5
+    MAX_COMPUTE_UNIT_LIMIT = 400_000
+    MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS = 5_000_000
 
     @staticmethod
     def _normalize_send_transaction_error(exc: Exception) -> Tuple[str, Dict[str, Any]]:
@@ -67,11 +68,24 @@ class SolanaExactHandler(ChainHandler):
         """
         raw = str(exc) or ""
         lower = raw.lower()
+        details = {"raw_error": raw}
+
+        if any(
+            marker in lower
+            for marker in (
+                "blockhash not found",
+                "blockhashnotfound",
+                "transaction simulation failed",
+                "preflight failure",
+            )
+        ):
+            details["broadcast_status"] = "rejected"
 
         if "insufficient funds" in lower:
-            return "INSUFFICIENT_FUNDS", {"raw_error": raw}
+            details["broadcast_status"] = "rejected"
+            return "INSUFFICIENT_FUNDS", details
 
-        return "SEND_TRANSACTION_FAILED", {"raw_error": raw}
+        return "SEND_TRANSACTION_FAILED", details
 
     @property
     def chain_name(self) -> str:
@@ -230,13 +244,46 @@ class SolanaExactHandler(ChainHandler):
         return None, None
 
     @staticmethod
-    def _compute_nonce_from_tx_b64(transaction_b64: str) -> Optional[str]:
+    def _message_signing_bytes(tx: VersionedTransaction) -> bytes:
+        message = bytes(tx.message)
+        return bytes([0x80]) + message if isinstance(tx.message, MessageV0) else message
+
+    @classmethod
+    def _compute_nonce_from_tx(cls, tx: VersionedTransaction) -> str:
+        digest = hashlib.sha256(cls._message_signing_bytes(tx)).hexdigest()[:32]
+        return f"solana:{digest}"
+
+    @classmethod
+    def compute_transaction_nonce(cls, transaction_b64: str) -> Optional[str]:
         try:
-            tx_bytes = base64.b64decode(transaction_b64)
-            digest = hashlib.sha256(tx_bytes).hexdigest()[:32]
-            return f"solana:{digest}"
+            tx = VersionedTransaction.from_bytes(base64.b64decode(transaction_b64))
+            return cls._compute_nonce_from_tx(tx)
         except Exception:
             return None
+
+    @classmethod
+    def _verify_partial_signatures(cls, tx: VersionedTransaction, payer: Pubkey) -> Optional[str]:
+        try:
+            required = int(tx.message.header.num_required_signatures)
+            signatures = list(tx.signatures)
+            if required != 2 or len(signatures) != required:
+                return "Transaction must require exactly payer and fee payer signatures"
+            if signatures[0] != SolSignature.default():
+                return "Fee payer signature must be empty"
+
+            try:
+                payer_index = list(tx.message.account_keys).index(payer)
+            except ValueError:
+                return "Missing or invalid payer signature"
+            if payer_index <= 0 or payer_index >= required:
+                return "Missing or invalid payer signature"
+
+            signature = signatures[payer_index]
+            if signature == SolSignature.default() or not signature.verify(payer, cls._message_signing_bytes(tx)):
+                return "Missing or invalid payer signature"
+            return None
+        except Exception:
+            return "Missing or invalid payer signature"
 
     def _verify_instruction_structure(
         self, tx: VersionedTransaction, requirements: Dict[str, Any]
@@ -266,24 +313,31 @@ class SolanaExactHandler(ChainHandler):
         if len(instructions) > 6:
             return False, f"Expected at most 6 instructions, got {len(instructions)}", None
 
-        # Instruction 0: ComputeBudget
-        if not self._is_compute_budget_instruction(message, instructions[0]):
+        compute_unit_limit = self._extract_compute_unit_limit(instructions[0])
+        if compute_unit_limit is None or not self._is_compute_budget_instruction(message, instructions[0]):
             return False, "First instruction must be ComputeBudget SetComputeUnitLimit", None
+        if compute_unit_limit > self.MAX_COMPUTE_UNIT_LIMIT:
+            return (
+                False,
+                f"Compute unit limit {compute_unit_limit} exceeds maximum {self.MAX_COMPUTE_UNIT_LIMIT}",
+                None,
+            )
 
-        # Instruction 1: ComputeBudget
-        if not self._is_compute_budget_instruction(message, instructions[1]):
+        compute_unit_price = self._extract_compute_unit_price(instructions[1])
+        if compute_unit_price is None or not self._is_compute_budget_instruction(message, instructions[1]):
             return False, "Second instruction must be ComputeBudget SetComputeUnitPrice", None
-
-        # Verify price <= 5 lamports per x402 spec (price instruction can be in either slot).
-        for compute_ix in (instructions[0], instructions[1]):
-            price = self._extract_compute_unit_price(compute_ix)
-            if price and price > self.MAX_COMPUTE_UNIT_PRICE:
-                return False, f"Compute unit price {price} exceeds maximum {self.MAX_COMPUTE_UNIT_PRICE}", None
+        if compute_unit_price > self.MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS:
+            return (
+                False,
+                f"Compute unit price {compute_unit_price} exceeds maximum {self.MAX_COMPUTE_UNIT_PRICE_MICRO_LAMPORTS}",
+                None,
+            )
 
         transfer_details: Optional[Dict[str, Any]] = None
         transfer_index: Optional[int] = None
         ata_indices: list[int] = []
         token_ledger_indices: list[int] = []
+        memo_values: list[bytes] = []
 
         # Remaining instructions: memo/ata/transferchecked (exactly one transferchecked)
         for idx in range(2, len(instructions)):
@@ -291,6 +345,7 @@ class SolanaExactHandler(ChainHandler):
             program_id = message.account_keys[instruction.program_id_index]
 
             if program_id in MEMO_PROGRAM_IDS:
+                memo_values.append(bytes(instruction.data))
                 continue
 
             if self._is_ata_create_instruction(message, instruction):
@@ -336,6 +391,20 @@ class SolanaExactHandler(ChainHandler):
         if transfer_details is None or transfer_index is None:
             return False, "Missing TransferChecked instruction", None
 
+        if len(memo_values) != 1:
+            return False, "Exactly one payment memo is required", None
+        expected_memo = (requirements.get("extra") or {}).get("memo")
+        if expected_memo is not None:
+            if memo_values[0] != str(expected_memo).encode("utf-8"):
+                return False, "Payment memo does not match requirements", None
+        else:
+            try:
+                memo_nonce = bytes.fromhex(memo_values[0].decode("ascii"))
+            except (UnicodeDecodeError, ValueError):
+                return False, "Payment memo must be a hex-encoded nonce", None
+            if len(memo_nonce) < 16:
+                return False, "Payment memo nonce must be at least 16 bytes", None
+
         # If present, ATA create must be before the transfer.
         if ata_indices and any(i > transfer_index for i in ata_indices):
             return False, "ATA Create instruction must appear before TransferChecked", None
@@ -359,16 +428,21 @@ class SolanaExactHandler(ChainHandler):
         return program_id == ASSOCIATED_TOKEN_PROGRAM_ID
 
     def _extract_compute_unit_price(self, instruction: CompiledInstruction) -> Optional[int]:
-        """Extract compute unit price from ComputeBudget instruction."""
+        """Extract compute unit price in microlamports from a strict instruction."""
         try:
-            # SetComputeUnitPrice instruction data format:
-            # [discriminator: u8, micro_lamports: u64]
             data = bytes(instruction.data)
-            if len(data) >= 9 and data[0] == 3:  # discriminator 3 = SetComputeUnitPrice
-                # Extract u64 micro_lamports (little-endian)
-                micro_lamports = int.from_bytes(data[1:9], "little")
-                # Convert micro_lamports to lamports
-                return micro_lamports // 1_000_000
+            if len(data) == 9 and data[0] == 3:
+                return int.from_bytes(data[1:9], "little")
+            return None
+        except Exception:
+            return None
+
+    def _extract_compute_unit_limit(self, instruction: CompiledInstruction) -> Optional[int]:
+        """Extract units from a strict SetComputeUnitLimit instruction."""
+        try:
+            data = bytes(instruction.data)
+            if len(data) == 5 and data[0] == 2:
+                return int.from_bytes(data[1:5], "little")
             return None
         except Exception:
             return None
@@ -466,6 +540,10 @@ class SolanaExactHandler(ChainHandler):
 
         # Check each instruction's accounts
         for instruction in message.instructions:
+            program_id = message.account_keys[instruction.program_id_index]
+            if program_id == facilitator_pubkey:
+                logger.error("Fee payer used as an instruction program: security violation")
+                return False
             for account_idx in instruction.accounts:
                 account = message.account_keys[account_idx]
                 if account == facilitator_pubkey:
@@ -573,6 +651,11 @@ class SolanaExactHandler(ChainHandler):
                 if not valid:
                     return VerificationResult(is_valid=False, invalid_reason=error or "Invalid instruction structure")
             else:
+                if transaction_provided:
+                    return VerificationResult(
+                        is_valid=False,
+                        invalid_reason="Fee payer does not match facilitator configuration",
+                    )
                 # Wallet fee payer mode (e.g. Phantom signAndSendTransaction):
                 # allow extra guard instructions injected by wallets, and only enforce that
                 # the transaction contains a TransferChecked matching requirements.
@@ -591,15 +674,18 @@ class SolanaExactHandler(ChainHandler):
 
             # Extract payer (authority) from transfer details
             payer = transfer_details.get("authority", "")
+            if is_facilitator_fee_payer:
+                signature_error = self._verify_partial_signatures(tx, Pubkey.from_string(payer))
+                if signature_error:
+                    return VerificationResult(is_valid=False, invalid_reason=signature_error)
 
-            # Derive a stable nonce from the submitted transaction bytes.
-            # This avoids relying on signature ordering (fee payer is signer #0).
+            # Bind replay protection to the message, not mutable signature slots.
             if not transaction_provided:
                 signature = self._extract_signature(payload) or ""
                 network = str(requirements.get("network") or self.chain_name)
                 nonce = f"{network}:{signature[:32]}"
             else:
-                nonce = self._compute_nonce_from_tx_b64(transaction_b64)
+                nonce = self._compute_nonce_from_tx(tx)
             if not nonce:
                 return VerificationResult(is_valid=False, invalid_reason="Unable to derive transaction nonce")
 
@@ -627,6 +713,7 @@ class SolanaExactHandler(ChainHandler):
         self,
         payload: Dict[str, Any],
         requirements: Dict[str, Any],
+        on_transaction_prepared=None,
     ) -> SettlementResult:
         """
         Settle payment on Solana by adding facilitator signature and submitting.
@@ -638,6 +725,14 @@ class SolanaExactHandler(ChainHandler):
         4. Wait for confirmation
         """
         try:
+            verification = self.verify_signature(payload, requirements)
+            if not verification.is_valid:
+                return SettlementResult(
+                    success=False,
+                    error_reason=verification.invalid_reason or "Invalid payment transaction",
+                    payer=verification.payer,
+                )
+
             # Get configuration
             rpc_url = self.config.get("rpc_url", "https://api.mainnet-beta.solana.com")
             signer_private_key = self.config.get("signer_private_key", "") or ""
@@ -689,27 +784,27 @@ class SolanaExactHandler(ChainHandler):
                     return SettlementResult(success=False, error_reason="Missing transaction signature")
 
                 try:
-                    client.confirm_transaction(
-                        SolSignature.from_string(tx_hash),
-                        commitment=Confirmed,
-                    )
+                    confirmation = client.confirm_transaction(SolSignature.from_string(tx_hash), commitment=Confirmed)
+                    status_value = confirmation.value[0] if confirmation.value else None
+                    if status_value is None or status_value.err is not None:
+                        return SettlementResult(
+                            success=False,
+                            transaction_hash=tx_hash,
+                            error_reason=f"Transaction confirmation failed: {getattr(status_value, 'err', None)}",
+                            payer=verification.payer,
+                        )
                 except Exception as exc:
-                    logger.warning(f"Confirmation timeout (wallet mode): {exc}")
-
-                transfer_details: Optional[Dict[str, Any]] = None
-                for instruction in message.instructions:
-                    program_id = message.account_keys[instruction.program_id_index]
-                    if program_id != TOKEN_PROGRAM_ID and program_id != TOKEN_2022_PROGRAM_ID:
-                        continue
-                    candidate = self._verify_transfer_instruction(message, instruction, requirements)
-                    if candidate:
-                        transfer_details = candidate
-                        break
+                    return SettlementResult(
+                        success=False,
+                        transaction_hash=tx_hash,
+                        error_reason=f"Transaction confirmation failed: {exc}",
+                        payer=verification.payer,
+                    )
 
                 return SettlementResult(
                     success=True,
                     transaction_hash=tx_hash,
-                    payer=(transfer_details or {}).get("authority"),
+                    payer=verification.payer,
                     details={
                         "mint": requirements.get("asset"),
                     },
@@ -737,14 +832,7 @@ class SolanaExactHandler(ChainHandler):
                 # @solana/web3.js's TransactionMessage.compileToV0Message().serialize()
                 # always includes the 0x80 prefix, which is why the user-side
                 # signature is correct but the facilitator-side signature was wrong.
-                from solders.message import MessageV0  # local import to keep top-level untouched
-
-                message_body = bytes(tx.message)
-                if isinstance(tx.message, MessageV0):
-                    signing_target = bytes([0x80]) + message_body
-                else:
-                    signing_target = message_body
-                fee_payer_sig = facilitator_keypair.sign_message(signing_target)
+                fee_payer_sig = facilitator_keypair.sign_message(self._message_signing_bytes(tx))
                 required = int(tx.message.header.num_required_signatures)
                 signatures = list(tx.signatures)
                 if len(signatures) < required:
@@ -759,6 +847,10 @@ class SolanaExactHandler(ChainHandler):
                 logger.error(f"Failed to sign solana transaction: {exc}")
                 return SettlementResult(success=False, error_reason=f"Failed to sign transaction: {exc}")
 
+            prepared_hash = str(tx.signatures[0])
+            if on_transaction_prepared:
+                on_transaction_prepared(prepared_hash)
+
             # Submit transaction
             try:
                 try:
@@ -766,7 +858,7 @@ class SolanaExactHandler(ChainHandler):
                         bytes(tx),
                         opts=TxOpts(
                             skip_preflight=False,
-                            skip_confirmation=False,
+                            skip_confirmation=True,
                             max_retries=3,
                             preflight_commitment=Confirmed,
                         ),
@@ -781,38 +873,46 @@ class SolanaExactHandler(ChainHandler):
                         bytes(tx),
                         opts=TxOpts(
                             skip_preflight=True,
-                            skip_confirmation=False,
+                            skip_confirmation=True,
                             max_retries=3,
                         ),
                     )
             except Exception as exc:
                 code, details = self._normalize_send_transaction_error(exc)
                 details.setdefault("stage", "send_raw_transaction")
-                return SettlementResult(success=False, error_reason=code, details=details)
+                return SettlementResult(
+                    success=False,
+                    transaction_hash=prepared_hash,
+                    error_reason=code,
+                    details=details,
+                )
 
             tx_hash = str(getattr(tx_response, "value", tx_response))
             logger.info(f"Solana settlement transaction submitted: {tx_hash}")
 
-            # Wait for confirmation (best effort)
+            # Settlement is successful only after a confirmed, non-error status.
             try:
-                client.confirm_transaction(
-                    SolSignature.from_string(tx_hash),
-                    commitment=Confirmed,
+                confirmation = client.confirm_transaction(SolSignature.from_string(tx_hash), commitment=Confirmed)
+                status_value = confirmation.value[0] if confirmation.value else None
+                if status_value is None or status_value.err is not None:
+                    return SettlementResult(
+                        success=False,
+                        transaction_hash=tx_hash,
+                        error_reason=f"Transaction confirmation failed: {getattr(status_value, 'err', None)}",
+                        payer=verification.payer,
+                    )
+            except Exception as exc:
+                return SettlementResult(
+                    success=False,
+                    transaction_hash=tx_hash,
+                    error_reason=f"Transaction confirmation failed: {exc}",
+                    payer=verification.payer,
                 )
-            except Exception as e:
-                logger.warning(f"Confirmation timeout: {e}")
-
-            payer = None
-            try:
-                # authority/payer was validated during verify; here we return fee payer address
-                payer = str(facilitator_keypair.pubkey())
-            except Exception:
-                payer = None
 
             return SettlementResult(
                 success=True,
                 transaction_hash=tx_hash,
-                payer=payer,
+                payer=verification.payer,
                 details={
                     "mint": requirements.get("asset"),
                 },
@@ -829,8 +929,7 @@ class SolanaExactHandler(ChainHandler):
         """Get Solscan explorer URL."""
         return f"https://solscan.io/tx/{tx_hash}"
 
-    def check_transaction_status(self, tx_hash: str) -> bool:
-        """Check if a Solana transaction has been confirmed."""
+    def get_transaction_status(self, tx_hash: str) -> TransactionStatus:
         try:
             rpc_url = self.config.get("rpc_url", "https://api.mainnet-beta.solana.com")
             client = Client(rpc_url)
@@ -838,9 +937,15 @@ class SolanaExactHandler(ChainHandler):
             resp = client.get_signature_statuses([sig])
             statuses = getattr(resp, "value", None)
             if statuses and statuses[0] is not None:
-                status = statuses[0]
-                return getattr(status, "err", None) is None
-            return False
+                tx_status = statuses[0]
+                if getattr(tx_status, "err", None) is not None:
+                    return TransactionStatus.FAILED
+                raw_confirmation = getattr(tx_status, "confirmation_status", "")
+                confirmation = str(getattr(raw_confirmation, "value", raw_confirmation)).lower()
+                if confirmation in {"confirmed", "finalized"}:
+                    return TransactionStatus.CONFIRMED
+                return TransactionStatus.PENDING
+            return TransactionStatus.PENDING
         except Exception as exc:
             logger.warning(f"check_transaction_status({tx_hash}): {exc}")
-            return False
+            return TransactionStatus.UNKNOWN

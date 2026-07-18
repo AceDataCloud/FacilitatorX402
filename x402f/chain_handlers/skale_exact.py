@@ -46,12 +46,14 @@ class SkaleExactHandler(BaseExactHandler):
         self,
         payload: Dict[str, Any],
         requirements: Dict[str, Any],
+        on_transaction_prepared=None,
     ) -> SettlementResult:
         """
         Execute Bridged USDC (SKALE Bridge) transferWithAuthorization on SKALE Base chain.
 
         SKALE has zero gas fees, so we set gasPrice=0 and use a minimal gas limit.
         """
+        prepared_hash = None
         try:
             from .base_exact import USDC_TRANSFER_WITH_AUTHORIZATION_ABI
 
@@ -117,7 +119,7 @@ class SkaleExactHandler(BaseExactHandler):
             tx_params = {
                 "chainId": self.CHAIN_ID,
                 "from": signer_address,
-                "nonce": web3.eth.get_transaction_count(signer_address),
+                "nonce": web3.eth.get_transaction_count(signer_address, "pending"),
                 "gas": estimated_gas,
                 "gasPrice": web3.eth.gas_price,  # On SKALE this returns 0 or minimal value
             }
@@ -130,6 +132,12 @@ class SkaleExactHandler(BaseExactHandler):
                 raw_tx = getattr(signed, "raw_transaction", None)
             if raw_tx is None:
                 return SettlementResult(success=False, error_reason="Signer returned unexpected transaction encoding")
+
+            prepared_hash = web3.keccak(raw_tx).hex()
+            if not prepared_hash.startswith("0x"):
+                prepared_hash = "0x" + prepared_hash
+            if on_transaction_prepared:
+                on_transaction_prepared(prepared_hash)
 
             tx_hash = web3.eth.send_raw_transaction(raw_tx)
             tx_hash_hex = tx_hash.hex()
@@ -163,7 +171,11 @@ class SkaleExactHandler(BaseExactHandler):
 
         except Exception as e:
             logger.error(f"SKALE chain settlement error: {e}")
-            return SettlementResult(success=False, error_reason=f"Settlement error: {str(e)}")
+            return SettlementResult(
+                success=False,
+                transaction_hash=prepared_hash,
+                error_reason=f"Settlement error: {str(e)}",
+            )
 
     def get_explorer_url(self, tx_hash: str) -> str:
         """Get SKALE Base explorer URL."""
