@@ -48,6 +48,8 @@ jobs:
         run: docker-compose build
 
       - name: Push Docker images
+        env:
+          COMPOSE_HTTP_TIMEOUT: "600"
         run: docker-compose push
 
       - name: Set Kubectl (US SV cluster)
