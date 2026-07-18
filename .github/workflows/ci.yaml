@@ -45,14 +45,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install poetry==1.8.5 pytest pytest-django
+          pip install poetry==1.8.5
           poetry install
 
       - name: Run payment tests
         env:
           DATABASE_ENGINE: django.db.backends.sqlite3
           PGSQL_DATABASE_FACILITATOR: ":memory:"
-        run: poetry run pytest x402f/tests -q
+        run: poetry run python -m pytest x402f/tests -q
 
   docker:
     name: Docker Build
