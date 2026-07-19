@@ -1,14 +1,9 @@
 name: deploy
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - .gitignore
-      - README.md
-      - ".github/ISSUE_TEMPLATE/**"
+  workflow_dispatch:
 jobs:
   run:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
