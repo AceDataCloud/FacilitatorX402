@@ -75,66 +75,14 @@ spec:
                   key: BASE_SIGNER_ADDRESS
                   name: x402
                   optional: false
-            - name: X402_SOLANA_RPC_URL
-              valueFrom:
-                secretKeyRef:
-                  key: SOLANA_RPC_URL
-                  name: x402
-                  optional: false
-            - name: X402_SOLANA_SIGNER_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  key: SOLANA_SIGNER_PRIVATE_KEY
-                  name: x402
-                  optional: false
-            - name: X402_SOLANA_SIGNER_ADDRESS
-              valueFrom:
-                secretKeyRef:
-                  key: SOLANA_SIGNER_ADDRESS
-                  name: x402
-                  optional: false
-            - name: X402_SKALE_RPC_URL
-              valueFrom:
-                secretKeyRef:
-                  key: SKALE_RPC_URL
-                  name: x402
-                  optional: true
-            - name: X402_SKALE_SIGNER_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  key: SKALE_SIGNER_PRIVATE_KEY
-                  name: x402
-                  optional: true
-            - name: X402_SKALE_SIGNER_ADDRESS
-              valueFrom:
-                secretKeyRef:
-                  key: SKALE_SIGNER_ADDRESS
-                  name: x402
-                  optional: true
-            - name: X402_SKALE_CHAIN_ID
-              value: "1187947933"
-            - name: X402_SKALE_GAS_LIMIT
-              value: "50000000"
             - name: X402_BASE_PAY_TO
               valueFrom:
                 secretKeyRef:
                   key: BASE_PAY_TO
                   name: x402
-                  optional: true
-            - name: X402_SOLANA_PAY_TO
-              valueFrom:
-                secretKeyRef:
-                  key: SOLANA_PAY_TO
-                  name: x402
-                  optional: true
-            - name: X402_SKALE_PAY_TO
-              valueFrom:
-                secretKeyRef:
-                  key: SKALE_PAY_TO
-                  name: x402
-                  optional: true
+                  optional: false
             - name: X402_GAS_LIMIT
-              value: "250000"
+              value: "500000"
             - name: X402_TX_TIMEOUT_SECONDS
               value: "120"
             - name: X402_SETTLE_TOKEN
