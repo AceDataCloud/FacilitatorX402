@@ -16,7 +16,7 @@ class X402Authorization(models.Model):
     value = models.CharField(max_length=78)
     valid_after = models.DateTimeField()
     valid_before = models.DateTimeField()
-    signature = models.CharField(max_length=132)
+    signature = models.TextField()
     payment_requirements = models.JSONField()
     payment_payload = models.JSONField()
     scheme = models.CharField(max_length=32, default="exact")
@@ -29,6 +29,9 @@ class X402Authorization(models.Model):
     )
     # EVM tx hash is 66 chars (0x + 64 hex); Solana signature is base58 (~88 chars).
     transaction_hash = models.CharField(max_length=128, blank=True, null=True)
+    prepared_transaction = models.TextField(blank=True, null=True)
+    signer_nonce = models.BigIntegerField(blank=True, null=True)
+    transaction_broadcast_at = models.DateTimeField(blank=True, null=True)
     settled_at = models.DateTimeField(blank=True, null=True)
     settling_started_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

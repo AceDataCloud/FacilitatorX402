@@ -4,18 +4,13 @@ RUN pip install poetry==1.8.5
 COPY ./pyproject.toml ./poetry.lock* /tmp/
 RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
 
-FROM python:3.10-alpine
-ENV PYTHONUNBUFFERED 1
-RUN apk update && apk add \
-  libuuid \
+FROM python:3.10-slim
+ENV PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
   gcc \
-  g++ \
   git \
-  libc-dev \
-  libffi-dev \
-  linux-headers \
-  postgresql-libs \
-  postgresql-dev
+  libpq-dev \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /code
 COPY --from=requirements-stage /tmp/requirements.txt /code/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt

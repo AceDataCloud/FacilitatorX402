@@ -58,4 +58,4 @@ jobs:
           kubectl get svc -n acedatacloud
 
       - name: Deploy
-        run: sh ./deploy/run.sh
+        run: bash ./deploy/run.sh
