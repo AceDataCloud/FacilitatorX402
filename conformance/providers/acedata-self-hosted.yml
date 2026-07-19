@@ -1,0 +1,10 @@
+id: acedata-self-hosted
+base_url: http://127.0.0.1:8000
+mode: raw
+auth:
+  type: header
+  header: X-Settlement-Token
+  secret_env: FACILITATOR_SETTLE_TOKEN
+profiles:
+  - core-v2
+timeout_seconds: 30
