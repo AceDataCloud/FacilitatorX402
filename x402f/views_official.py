@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+import threading
 import zlib
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -18,15 +19,20 @@ from rest_framework.views import APIView
 from x402.schemas import SettleRequest, SettleResponse, VerifyRequest, VerifyResponse
 
 from x402f.models import X402Authorization
-from x402f.official import BASE_MAINNET, build_configured_facilitator
+from x402f.official import build_configured_facilitator, configured_base_network
 
 RequestModel = TypeVar("RequestModel", bound=BaseModel)
+_local_signer_locks: dict[str, threading.Lock] = {}
+_local_signer_locks_guard = threading.Lock()
 
 
 @contextmanager
 def _signer_lock(network: str):
     if connection.vendor != "postgresql":
-        yield
+        with _local_signer_locks_guard:
+            local_lock = _local_signer_locks.setdefault(network, threading.Lock())
+        with local_lock:
+            yield
         return
     lock_id = zlib.crc32(f"x402:{network}:signer".encode())
     with connection.cursor() as cursor:
@@ -68,7 +74,7 @@ def _failed_settle(reason: str, transaction_hash: str = "") -> Response:
             success=False,
             error_reason=reason,
             transaction=transaction_hash,
-            network=BASE_MAINNET,
+            network=configured_base_network(),
         )
     )
 
@@ -98,7 +104,7 @@ def _authorization_data(request_model: VerifyRequest | SettleRequest) -> tuple[d
 
 def _validate_policy(request_model: VerifyRequest | SettleRequest) -> None:
     requirements = request_model.payment_requirements
-    if str(requirements.network) != BASE_MAINNET or requirements.scheme != "exact":
+    if str(requirements.network) != configured_base_network() or requirements.scheme != "exact":
         raise ValueError("Unsupported payment kind")
     if requirements.asset.lower() != settings.X402_BASE_ASSET.lower():
         raise ValueError("Unsupported payment asset")
@@ -131,6 +137,19 @@ class X402VerifyView(APIView):
         except (ValidationError, ValueError) as exc:
             return _invalid_verify(str(exc))
 
+        requirements = verify_request.payment_requirements
+        serialized_requirements = requirements.model_dump(mode="json", by_alias=True)
+        serialized_payload = verify_request.payment_payload.model_dump(mode="json", by_alias=True)
+        existing = X402Authorization.objects.filter(nonce=nonce).first()
+        if existing is not None:
+            if (
+                existing.payment_requirements == serialized_requirements
+                and existing.payment_payload == serialized_payload
+                and existing.signature == signature
+            ):
+                return _response(VerifyResponse(is_valid=True, payer=existing.payer))
+            return _invalid_verify("Authorization nonce conflicts with a different payment.")
+
         try:
             facilitator, _signer = build_configured_facilitator()
             result = facilitator.verify(
@@ -143,7 +162,6 @@ class X402VerifyView(APIView):
         if not result.is_valid:
             return _response(result)
 
-        requirements = verify_request.payment_requirements
         try:
             with transaction.atomic():
                 X402Authorization.objects.create(
@@ -154,12 +172,20 @@ class X402VerifyView(APIView):
                     valid_after=datetime.fromtimestamp(int(authorization["validAfter"]), tz=datetime_timezone.utc),
                     valid_before=datetime.fromtimestamp(int(authorization["validBefore"]), tz=datetime_timezone.utc),
                     signature=signature,
-                    payment_requirements=requirements.model_dump(mode="json", by_alias=True),
-                    payment_payload=verify_request.payment_payload.model_dump(mode="json", by_alias=True),
+                    payment_requirements=serialized_requirements,
+                    payment_payload=serialized_payload,
                     scheme=requirements.scheme,
                 )
         except IntegrityError:
-            return _invalid_verify("Authorization nonce already processed.")
+            existing = X402Authorization.objects.filter(nonce=nonce).first()
+            if (
+                existing is not None
+                and existing.payment_requirements == serialized_requirements
+                and existing.payment_payload == serialized_payload
+                and existing.signature == signature
+            ):
+                return _response(result)
+            return _invalid_verify("Authorization nonce conflicts with a different payment.")
         except Exception as exc:
             logger.error("official x402 reservation failed: nonce={} error={}", nonce, exc)
             return Response(
@@ -212,7 +238,7 @@ class X402SettleView(APIView):
                     success=True,
                     payer=record.payer,
                     transaction=record.transaction_hash or "",
-                    network=BASE_MAINNET,
+                    network=configured_base_network(),
                     amount=record.value,
                 )
             )
@@ -243,7 +269,7 @@ class X402SettleView(APIView):
                         success=True,
                         payer=record.payer,
                         transaction=record.transaction_hash,
-                        network=BASE_MAINNET,
+                        network=configured_base_network(),
                         amount=record.value,
                     )
                 )
@@ -265,7 +291,7 @@ class X402SettleView(APIView):
                 return _failed_settle("Settlement transaction failed on-chain.", record.transaction_hash)
             if record.prepared_transaction:
                 try:
-                    with _signer_lock(BASE_MAINNET):
+                    with _signer_lock(configured_base_network()):
                         _facilitator, signer = build_configured_facilitator()
                         _seed_signer_nonce(signer)
                         signer.broadcast_prepared(record.prepared_transaction)
@@ -315,7 +341,7 @@ class X402SettleView(APIView):
                 raise RuntimeError("Unable to persist settlement broadcast state")
 
         try:
-            with _signer_lock(BASE_MAINNET):
+            with _signer_lock(configured_base_network()):
                 facilitator, signer = build_configured_facilitator(persist_prepared_hash, mark_broadcast)
                 _seed_signer_nonce(signer)
                 result = facilitator.settle(

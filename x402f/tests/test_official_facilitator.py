@@ -1,13 +1,15 @@
 import os
 import time
+from unittest.mock import patch
 
+from django.test import override_settings
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 from hexbytes import HexBytes
 from x402.mechanisms.evm.signer import TransactionReceipt
 from x402.schemas import PaymentPayload, PaymentRequirements
 
-from x402f.official import BASE_MAINNET, build_facilitator
+from x402f.official import BASE_MAINNET, build_configured_facilitator, build_facilitator
 from x402f.official_signer import DurableFacilitatorWeb3Signer
 
 USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
@@ -143,6 +145,34 @@ def test_official_base_exact_supported_and_verified() -> None:
     assert supported["signers"] == {"eip155:*": [signer.account.address]}
     assert result.is_valid is True
     assert signer.simulated_transfer is True
+
+
+def test_official_canary_advertises_only_configured_sepolia_network() -> None:
+    signer = FakeEvmSigner()
+    facilitator = build_facilitator(signer, "eip155:84532")
+
+    supported = facilitator.get_supported().model_dump(by_alias=True)
+
+    assert [kind["network"] for kind in supported["kinds"]] == ["eip155:84532"]
+
+
+@override_settings(
+    X402_BASE_NETWORK="eip155:84532",
+    X402_BASE_CHAIN_ID=84532,
+    X402_BASE_RPC_URL="https://sepolia.base.org",
+    X402_BASE_SIGNER_PRIVATE_KEY="0x" + "11" * 32,
+    X402_BASE_SIGNER_ADDRESS="",
+)
+@patch("x402f.official.DurableFacilitatorWeb3Signer")
+def test_configured_canary_signer_uses_sepolia_chain_id(signer_class) -> None:
+    signer = FakeEvmSigner()
+    signer_class.return_value = signer
+
+    facilitator, configured_signer = build_configured_facilitator()
+
+    assert configured_signer is signer
+    assert signer_class.call_args.kwargs["chain_id"] == 84532
+    assert [kind.network for kind in facilitator.get_supported().kinds] == ["eip155:84532"]
 
 
 def test_official_base_exact_rejects_tampered_signature() -> None:

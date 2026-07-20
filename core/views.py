@@ -134,7 +134,7 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
             "name": "Ace Data Cloud Facilitator X402",
             "url": facilitator_url,
             "description": "Production settlement and verification service for Ace Data Cloud x402 payments.",
-            "supportedKinds": [{"x402Version": 2, "scheme": "exact", "network": "eip155:8453"}],
+            "supportedKinds": [{"x402Version": 2, "scheme": "exact", "network": settings.X402_BASE_NETWORK}],
             "supportedCurrencies": ["USDC"],
             "endpoints": {
                 "supported": f"{facilitator_url}/supported",

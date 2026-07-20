@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -7,8 +9,10 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from x402.schemas import SettleResponse, VerifyResponse
 
+from core.views import build_well_known_x402_data
 from x402f.models import X402Authorization
 from x402f.tests.test_official_facilitator import _payment
+from x402f.views_official import _signer_lock
 
 
 class FakeSigner:
@@ -78,6 +82,15 @@ class OfficialViewTests(TestCase):
             HTTP_X_SETTLEMENT_TOKEN="internal-secret",
         )
 
+    @override_settings(X402_BASE_NETWORK="eip155:84532")
+    def test_discovery_uses_configured_sepolia_network(self) -> None:
+        data = build_well_known_x402_data("https://facilitator2.acedata.cloud")
+
+        self.assertEqual(
+            data["facilitator"]["supportedKinds"],
+            [{"x402Version": 2, "scheme": "exact", "network": "eip155:84532"}],
+        )
+
     def test_verify_rejects_legacy_request_shape(self) -> None:
         response = self.client.post(
             reverse("x402:verify"),
@@ -103,7 +116,7 @@ class OfficialViewTests(TestCase):
         self.assertIn("EIP-3009", response.json()["invalidReason"])
 
     @patch("x402f.views_official.build_configured_facilitator")
-    def test_verify_reserves_official_authorization_and_rejects_replay(self, factory) -> None:
+    def test_verify_reserves_official_authorization_and_accepts_identical_retry(self, factory) -> None:
         factory.side_effect = self._facilitator_factory
         body = self.body
 
@@ -112,11 +125,63 @@ class OfficialViewTests(TestCase):
 
         self.assertEqual(first.status_code, 200)
         self.assertTrue(first.json()["isValid"])
-        self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "Authorization nonce already processed.")
+        self.assertTrue(second.json()["isValid"])
+        self.assertEqual(X402Authorization.objects.count(), 1)
         record = X402Authorization.objects.get()
         self.assertEqual(record.payment_requirements["network"], "eip155:8453")
         self.assertEqual(record.payment_payload["accepted"]["network"], "eip155:8453")
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_identical_verify_retry_uses_reservation_when_facilitator_is_unavailable(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        body = self.body
+        first = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
+        self.assertTrue(first.json()["isValid"])
+
+        factory.side_effect = RuntimeError("RPC unavailable")
+        second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
+
+        self.assertTrue(second.json()["isValid"])
+        self.assertEqual(second.json()["payer"].lower(), X402Authorization.objects.get().payer.lower())
+        self.assertEqual(factory.call_count, 1)
+
+    def test_sqlite_signer_lock_serializes_same_network(self) -> None:
+        active = 0
+        maximum_active = 0
+        state_lock = threading.Lock()
+
+        def worker() -> None:
+            nonlocal active, maximum_active
+            with _signer_lock("eip155:84532"):
+                with state_lock:
+                    active += 1
+                    maximum_active = max(maximum_active, active)
+                time.sleep(0.03)
+                with state_lock:
+                    active -= 1
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=1)
+
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertEqual(maximum_active, 1)
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_verify_rejects_same_nonce_with_changed_requirements(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        body = self.body
+        first = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
+        self.assertTrue(first.json()["isValid"])
+
+        body["paymentRequirements"]["amount"] = str(int(body["paymentRequirements"]["amount"]) + 1)
+        second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
+
+        self.assertFalse(second.json()["isValid"])
+        self.assertEqual(second.json()["invalidReason"], "Authorization nonce conflicts with a different payment.")
+        self.assertEqual(X402Authorization.objects.count(), 1)
 
     @patch("x402f.views_official._signer_lock", return_value=nullcontext())
     @patch("x402f.views_official.build_configured_facilitator")

@@ -11,9 +11,17 @@ BASE_MAINNET = "eip155:8453"
 BASE_MAINNET_CHAIN_ID = 8453
 
 
-def build_facilitator(signer: FacilitatorEvmSigner) -> x402FacilitatorSync:
+def configured_base_network() -> str:
+    return settings.X402_BASE_NETWORK
+
+
+def configured_base_chain_id() -> int:
+    return settings.X402_BASE_CHAIN_ID
+
+
+def build_facilitator(signer: FacilitatorEvmSigner, network: str | None = None) -> x402FacilitatorSync:
     facilitator = x402FacilitatorSync()
-    facilitator.register([BASE_MAINNET], ExactEvmFacilitatorScheme(signer))
+    facilitator.register([network or configured_base_network()], ExactEvmFacilitatorScheme(signer))
     return facilitator
 
 
@@ -31,11 +39,11 @@ def build_configured_facilitator(
         rpc_url=rpc_url,
         gas_limit=max(settings.X402_GAS_LIMIT, 500000),
         receipt_timeout=settings.X402_TX_TIMEOUT_SECONDS,
-        chain_id=BASE_MAINNET_CHAIN_ID,
+        chain_id=configured_base_chain_id(),
         on_transaction_prepared=on_transaction_prepared,
         on_transaction_broadcast=on_transaction_broadcast,
     )
     configured_address = settings.X402_BASE_SIGNER_ADDRESS
     if configured_address and configured_address.lower() != signer.address.lower():
         raise RuntimeError("Configured Base signer address does not match private key")
-    return build_facilitator(signer), signer
+    return build_facilitator(signer, configured_base_network()), signer
