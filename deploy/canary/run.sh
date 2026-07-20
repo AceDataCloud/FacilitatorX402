@@ -39,17 +39,21 @@ fi
 
 cleanup() {
   exit_code=$?
+  rollback_failed=0
   trap - EXIT
   if [ "$exit_code" -ne 0 ] && [ "$ROLLOUT_COMPLETE" -ne 1 ]; then
     if [ "$HAD_DEPLOYMENT" -eq 1 ]; then
-      kubectl apply -f "$SNAPSHOT" || true
-      kubectl rollout status deployment/facilitator2-backend -n acedatacloud --timeout=600s || true
+      kubectl apply -f "$SNAPSHOT" || rollback_failed=1
+      kubectl rollout status deployment/facilitator2-backend -n acedatacloud --timeout=600s || rollback_failed=1
     else
-      kubectl delete deployment/facilitator2-backend -n acedatacloud --ignore-not-found || true
+      kubectl delete deployment/facilitator2-backend -n acedatacloud --ignore-not-found || rollback_failed=1
     fi
-    if [ "$HAD_SERVICE" -eq 1 ]; then kubectl apply -f "$SERVICE_SNAPSHOT" || true; else kubectl delete service/facilitator2-backend -n acedatacloud --ignore-not-found || true; fi
-    if [ "$HAD_INGRESS" -eq 1 ]; then kubectl apply -f "$INGRESS_SNAPSHOT" || true; else kubectl delete ingress/facilitator2-backend -n acedatacloud --ignore-not-found || true; fi
-    if [ "$HAD_PVC" -eq 0 ]; then kubectl delete pvc/facilitator2-data -n acedatacloud --ignore-not-found || true; fi
+    if [ "$HAD_SERVICE" -eq 1 ]; then kubectl apply -f "$SERVICE_SNAPSHOT" || rollback_failed=1; else kubectl delete service/facilitator2-backend -n acedatacloud --ignore-not-found || rollback_failed=1; fi
+    if [ "$HAD_INGRESS" -eq 1 ]; then kubectl apply -f "$INGRESS_SNAPSHOT" || rollback_failed=1; else kubectl delete ingress/facilitator2-backend -n acedatacloud --ignore-not-found || rollback_failed=1; fi
+    if [ "$HAD_PVC" -eq 0 ]; then kubectl delete pvc/facilitator2-data -n acedatacloud --ignore-not-found || rollback_failed=1; fi
+    if [ "$rollback_failed" -ne 0 ]; then
+      echo "facilitator2 rollback failed; inspect Deployment, Service, Ingress, and PVC state" >&2
+    fi
   fi
   rm -f "$MANIFEST" "$SNAPSHOT" "$SERVICE_SNAPSHOT" "$INGRESS_SNAPSHOT"
   exit "$exit_code"
@@ -71,6 +75,8 @@ else
 fi
 kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/facilitator2-data -n acedatacloud --timeout=300s
 kubectl rollout status deployment/facilitator2-backend -n acedatacloud --timeout=600s
+kubectl exec deployment/facilitator2-backend -n acedatacloud -- \
+  python -c 'import os; from web3 import HTTPProvider, Web3; web3 = Web3(HTTPProvider(os.environ["X402_BASE_RPC_URL"])); assert web3.eth.chain_id == 84532; contract = web3.eth.contract(address=Web3.to_checksum_address(os.environ["X402_BASE_ASSET"]), abi=[{"inputs": [], "name": "name", "outputs": [{"type": "string"}], "stateMutability": "view", "type": "function"}, {"inputs": [], "name": "version", "outputs": [{"type": "string"}], "stateMutability": "view", "type": "function"}]); assert len(web3.eth.get_code(contract.address)) > 0; assert contract.functions.name().call() == "USDC"; assert contract.functions.version().call() == "2"'
 kubectl exec deployment/facilitator2-backend -n acedatacloud -- \
   python -c 'import json, urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:8000/supported", timeout=5)); assert [{key:item[key] for key in ("x402Version","scheme","network")} for item in data["kinds"]] == [{"x402Version": 2, "scheme": "exact", "network": "eip155:84532"}]'
 /usr/bin/curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
