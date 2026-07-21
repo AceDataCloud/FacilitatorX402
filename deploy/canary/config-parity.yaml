@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: facilitator2-config
+  namespace: acedatacloud
+data:
+  APP_ENV: production
+  DEBUG: "false"
+  DATABASE_ENGINE: django.db.backends.postgresql_psycopg2
+  ALLOWED_HOSTS: facilitator2.acedata.cloud,facilitator.acedata.cloud,localhost,127.0.0.1
+  X402_FACILITATOR_PUBLIC_URL: https://facilitator2.acedata.cloud
+  X402_BASE_NETWORK: eip155:8453
+  X402_BASE_CHAIN_ID: "8453"
+  X402_BASE_EXACT_ENABLED: "true"
+  X402_BASE_UPTO_ENABLED: "true"
+  X402_SOLANA_MAINNET_ENABLED: "true"
+  X402_SOLANA_DEVNET_ENABLED: "false"
+  X402_SOLANA_DEVNET_RPC_URL: https://api.devnet.solana.com
+  X402_SOLANA_DEVNET_ASSET: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+  X402_SKALE_CHAIN_ID: "1187947933"
+  X402_SKALE_GAS_LIMIT: "50000000"
+  X402_SKALE_EXACT_ENABLED: "true"
+  X402_GAS_LIMIT: "500000"
+  X402_TX_TIMEOUT_SECONDS: "120"
+  X402_SETTLEMENT_LEASE_SECONDS: "300"
+  X402_PREPARED_MAX_AGE_SECONDS: "1800"
+  X402_DISCOVERY_URL: https://x402.acedata.cloud/discovery/resources
+  X402_DISCOVERY_ALLOWED_HOSTS: x402.acedata.cloud

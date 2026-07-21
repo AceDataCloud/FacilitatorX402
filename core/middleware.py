@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import JsonResponse
 
 from core.views import build_well_known_x402_data
@@ -11,7 +12,9 @@ class WellKnownX402Middleware:
 
     def __call__(self, request):
         if request.path in {"/.well-known/x402", "/.well-known/x402/"}:
-            facilitator_url = request.build_absolute_uri("/").rstrip("/")
+            facilitator_url = settings.X402_FACILITATOR_PUBLIC_URL.rstrip("/") or request.build_absolute_uri(
+                "/"
+            ).rstrip("/")
             return JsonResponse(build_well_known_x402_data(facilitator_url))
 
         return self.get_response(request)

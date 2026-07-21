@@ -1,11 +1,26 @@
+import json
+import urllib.error
+import urllib.request
+from urllib.parse import urlsplit
+
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponsePermanentRedirect, JsonResponse
+from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
+
+from x402f.official import SKALE_MAINNET
 
 NETWORK_TO_CAIP2 = {
     "base": "eip155:8453",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
     "solana-devnet": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 }
+MAX_DISCOVERY_BYTES = 5 * 1024 * 1024
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
+        return None
+
 
 HOME_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -119,7 +134,34 @@ def health(request):
 
 def build_well_known_x402_data(facilitator_url: str) -> dict:
     """Build machine-readable facilitator metadata for /.well-known/x402."""
-    signer = getattr(settings, "X402_BASE_SIGNER_ADDRESS", "")
+    supported_kinds = []
+    supported_networks = []
+    addresses = {}
+
+    def add_kind(scheme: str, network: str) -> None:
+        supported_kinds.append({"x402Version": 2, "scheme": scheme, "network": network})
+
+    if settings.X402_BASE_EXACT_ENABLED:
+        add_kind("exact", settings.X402_BASE_NETWORK)
+    if settings.X402_BASE_UPTO_ENABLED:
+        add_kind("upto", settings.X402_BASE_NETWORK)
+    if settings.X402_BASE_EXACT_ENABLED or settings.X402_BASE_UPTO_ENABLED:
+        supported_networks.append({"network": "base", "caip2": settings.X402_BASE_NETWORK})
+        if settings.X402_BASE_SIGNER_ADDRESS:
+            addresses["base"] = settings.X402_BASE_SIGNER_ADDRESS
+    if settings.X402_SKALE_EXACT_ENABLED:
+        add_kind("exact", SKALE_MAINNET)
+        supported_networks.append({"network": "skale", "caip2": SKALE_MAINNET})
+        if settings.X402_SKALE_SIGNER_ADDRESS:
+            addresses["skale"] = settings.X402_SKALE_SIGNER_ADDRESS
+    if settings.X402_SOLANA_MAINNET_ENABLED:
+        add_kind("exact", SOLANA_MAINNET_CAIP2)
+        supported_networks.append({"network": "solana", "caip2": SOLANA_MAINNET_CAIP2})
+        if settings.X402_SOLANA_SIGNER_ADDRESS:
+            addresses["solana"] = settings.X402_SOLANA_SIGNER_ADDRESS
+    if settings.X402_SOLANA_DEVNET_ENABLED:
+        add_kind("exact", SOLANA_DEVNET_CAIP2)
+        supported_networks.append({"network": "solana-devnet", "caip2": SOLANA_DEVNET_CAIP2})
 
     data = {
         # Compatibility shape for discovery clients. Facilitators do not expose
@@ -134,14 +176,15 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
             "name": "Ace Data Cloud Facilitator X402",
             "url": facilitator_url,
             "description": "Production settlement and verification service for Ace Data Cloud x402 payments.",
-            "supportedKinds": [{"x402Version": 2, "scheme": "exact", "network": settings.X402_BASE_NETWORK}],
+            "supportedKinds": supported_kinds,
+            "supportedNetworks": supported_networks,
             "supportedCurrencies": ["USDC"],
             "endpoints": {
                 "supported": f"{facilitator_url}/supported",
                 "verify": f"{facilitator_url}/verify",
                 "settle": f"{facilitator_url}/settle",
             },
-            "signers": {"eip155:*": [signer]} if signer else {},
+            "addresses": addresses,
         },
     }
     return data
@@ -149,5 +192,37 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
 
 def well_known_x402(request):
     """Machine-readable facilitator metadata endpoint (/.well-known/x402)."""
-    facilitator_url = request.build_absolute_uri("/").rstrip("/")
+    facilitator_url = settings.X402_FACILITATOR_PUBLIC_URL.rstrip("/") or request.build_absolute_uri("/").rstrip("/")
     return JsonResponse(build_well_known_x402_data(facilitator_url))
+
+
+def discovery_resources(request):  # noqa: ANN001
+    url = settings.X402_DISCOVERY_URL
+    parsed = urlsplit(url)
+    allowed_hosts = settings.X402_DISCOVERY_ALLOWED_HOSTS
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.hostname.lower() not in allowed_hosts
+    ):
+        return JsonResponse({"error": "Resource discovery is unavailable."}, status=503)
+    try:
+        opener = urllib.request.build_opener(NoRedirectHandler())
+        with opener.open(url, timeout=10) as response:
+            raw = response.read(MAX_DISCOVERY_BYTES + 1)
+        if len(raw) > MAX_DISCOVERY_BYTES:
+            raise ValueError("discovery response is too large")
+        data = json.loads(raw)
+    except (OSError, ValueError, urllib.error.URLError):
+        return JsonResponse({"error": "Resource discovery is unavailable."}, status=503)
+    if not isinstance(data, dict) or not {"x402Version", "items", "pagination"}.issubset(data):
+        return JsonResponse({"error": "Resource discovery returned an invalid response."}, status=503)
+    return JsonResponse(data)
+
+
+def discovery_list(request):  # noqa: ANN001
+    return HttpResponsePermanentRedirect("/discovery/resources")

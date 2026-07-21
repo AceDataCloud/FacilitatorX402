@@ -75,4 +75,4 @@ jobs:
       - name: Deploy facilitator2
         env:
           GITHUB_SHA: ${{ github.sha }}
-        run: bash deploy/canary/run.sh
+        run: bash deploy/canary/run-parity.sh
