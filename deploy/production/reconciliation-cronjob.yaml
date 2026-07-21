@@ -47,11 +47,7 @@ spec:
                 - name: PGSQL_DATABASE_FACILITATOR
                   value: acedatacloud_facilitator
                 - name: X402_BASE_NETWORK
-                  valueFrom:
-                    secretKeyRef:
-                      key: BASE_NETWORK
-                      name: x402
-                      optional: false
+                  value: eip155:8453
                 - name: X402_BASE_CHAIN_ID
                   value: "8453"
                 - name: X402_BASE_RPC_URL

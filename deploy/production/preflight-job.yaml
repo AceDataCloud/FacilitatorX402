@@ -13,8 +13,15 @@ spec:
         app: facilitator-preflight
     spec:
       restartPolicy: Never
+      automountServiceAccountToken: false
       imagePullSecrets:
         - name: docker-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: preflight
           image: ghcr.io/acedatacloud/facilitator-backend:${TAG}
@@ -23,6 +30,7 @@ spec:
             - python
             - manage.py
             - check_official_v2_cutover
+            - --fail-expired
           envFrom:
             - secretRef:
                 name: pgsql
@@ -37,6 +45,8 @@ spec:
                   optional: false
             - name: PGSQL_DATABASE_FACILITATOR
               value: acedatacloud_facilitator
+            - name: X402_BASE_NETWORK
+              value: eip155:8453
           resources:
             limits:
               cpu: 200m
@@ -44,3 +54,15 @@ spec:
             requests:
               cpu: 50m
               memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi
