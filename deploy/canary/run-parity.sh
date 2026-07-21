@@ -18,13 +18,32 @@ RESOURCES=(
 snapshot_resource() {
   local resource="$1"
   local path="$2"
-  kubectl get "$resource" -n acedatacloud -o json | \
-    jq 'del(.status,.metadata.creationTimestamp,.metadata.generation,.metadata.managedFields,.metadata.resourceVersion,.metadata.uid)' >"$path"
+  local raw="$path.raw"
+  local temporary="$path.tmp"
+  rm -f "$raw" "$temporary"
+  if ! kubectl get "$resource" -n acedatacloud --ignore-not-found -o json >"$raw"; then
+    rm -f "$raw"
+    return 1
+  fi
+  if [ ! -s "$raw" ]; then
+    rm -f "$raw"
+    return 0
+  fi
+  if ! jq -e 'del(.status,.metadata.creationTimestamp,.metadata.generation,.metadata.managedFields,.metadata.resourceVersion,.metadata.uid) | select(type == "object" and length > 0)' <"$raw" >"$temporary"; then
+    rm -f "$raw" "$temporary"
+    return 1
+  fi
+  rm -f "$raw"
+  if [ ! -s "$temporary" ]; then
+    rm -f "$temporary"
+    return 1
+  fi
+  mv "$temporary" "$path"
 }
 
 for resource in "${RESOURCES[@]}"; do
   name="${resource//\//-}"
-  snapshot_resource "$resource" "$SNAPSHOT_DIR/$name.json" 2>/dev/null || true
+  snapshot_resource "$resource" "$SNAPSHOT_DIR/$name.json"
 done
 
 cleanup() {
