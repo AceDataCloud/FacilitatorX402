@@ -25,6 +25,8 @@ spec:
         - env:
             - name: APP_ENV
               value: production
+            - name: ALLOWED_HOSTS
+              value: facilitator.acedata.cloud,localhost,127.0.0.1
             - name: APP_SECRET_KEY
               valueFrom:
                 secretKeyRef:
@@ -57,6 +59,16 @@ spec:
                   key: PGSQL_USER
                   name: pgsql
                   optional: false
+            - name: X402_FACILITATOR_PUBLIC_URL
+              value: https://facilitator.acedata.cloud
+            - name: X402_BASE_NETWORK
+              valueFrom:
+                secretKeyRef:
+                  key: BASE_NETWORK
+                  name: x402
+                  optional: false
+            - name: X402_BASE_CHAIN_ID
+              value: "8453"
             - name: X402_BASE_RPC_URL
               valueFrom:
                 secretKeyRef:
@@ -75,12 +87,22 @@ spec:
                   key: BASE_SIGNER_ADDRESS
                   name: x402
                   optional: false
+            - name: X402_BASE_ASSET
+              valueFrom:
+                secretKeyRef:
+                  key: BASE_ASSET
+                  name: x402
+                  optional: false
             - name: X402_BASE_PAY_TO
               valueFrom:
                 secretKeyRef:
                   key: BASE_PAY_TO
                   name: x402
                   optional: false
+            - name: X402_BASE_EXACT_ENABLED
+              value: "true"
+            - name: X402_BASE_UPTO_ENABLED
+              value: "true"
             - name: X402_GAS_LIMIT
               value: "500000"
             - name: X402_TX_TIMEOUT_SECONDS
@@ -95,6 +117,86 @@ spec:
               value: "0"
             - name: X402_MAX_PRIORITY_FEE_PER_GAS_WEI
               value: "0"
+            - name: X402_SOLANA_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_RPC_URL
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_SIGNER_PRIVATE_KEY
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_SIGNER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_SIGNER_ADDRESS
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_ASSET
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_ASSET
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_PAY_TO
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_PAY_TO
+                  name: x402
+                  optional: false
+            - name: X402_SOLANA_MAINNET_ENABLED
+              value: "true"
+            - name: X402_SOLANA_DEVNET_ENABLED
+              value: "false"
+            - name: X402_SKALE_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_RPC_URL
+                  name: x402
+                  optional: false
+            - name: X402_SKALE_SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_SIGNER_PRIVATE_KEY
+                  name: x402
+                  optional: false
+            - name: X402_SKALE_SIGNER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_SIGNER_ADDRESS
+                  name: x402
+                  optional: false
+            - name: X402_SKALE_ASSET
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_USDC_ASSET
+                  name: x402
+                  optional: false
+            - name: X402_SKALE_PAY_TO
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_PAY_TO
+                  name: x402
+                  optional: false
+            - name: X402_SKALE_CHAIN_ID
+              value: "1187947933"
+            - name: X402_SKALE_GAS_LIMIT
+              value: "50000000"
+            - name: X402_SKALE_EXACT_ENABLED
+              value: "true"
+            - name: X402_SETTLEMENT_LEASE_SECONDS
+              value: "300"
+            - name: X402_PREPARED_MAX_AGE_SECONDS
+              value: "1800"
+            - name: X402_DISCOVERY_URL
+              value: https://platform.acedata.cloud/api/v1/x402/discovery/
+            - name: X402_DISCOVERY_ALLOWED_HOSTS
+              value: platform.acedata.cloud
+            - name: X402_DISCOVERY_RESOURCE_HOSTS
+              value: x402.acedata.cloud
             # Tencent Cloud SSM — optional, fills in env vars not already set.
             - name: TENCENT_CLOUD_SECRET_ID
               valueFrom:
@@ -115,6 +217,28 @@ spec:
           image: ghcr.io/acedatacloud/facilitator-backend:${TAG}
           imagePullPolicy: IfNotPresent
           name: facilitator-backend
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+              httpHeaders:
+                - name: Host
+                  value: facilitator.acedata.cloud
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+              httpHeaders:
+                - name: Host
+                  value: facilitator.acedata.cloud
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
           ports:
             - containerPort: 8000
               protocol: TCP

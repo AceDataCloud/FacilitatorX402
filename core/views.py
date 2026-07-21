@@ -1,6 +1,7 @@
 import json
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -15,6 +16,149 @@ NETWORK_TO_CAIP2 = {
     "solana-devnet": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 }
 MAX_DISCOVERY_BYTES = 5 * 1024 * 1024
+
+
+def _discovery_accepts() -> list[dict]:
+    accepts = []
+
+    def add(scheme: str, network: str, asset: str, pay_to: str, extra: dict) -> None:
+        if not asset or not pay_to:
+            return
+        accepts.append(
+            {
+                "scheme": scheme,
+                "network": network,
+                "asset": asset,
+                "payTo": pay_to,
+                "maxAmountRequired": "0",
+                "maxTimeoutSeconds": 120,
+                "mimeType": "application/json",
+                "extra": extra,
+            }
+        )
+
+    base_extra = {
+        "chainId": settings.X402_BASE_CHAIN_ID,
+        "name": "USD Coin",
+        "version": "2",
+        "verifyingContract": settings.X402_BASE_ASSET,
+    }
+    if settings.X402_BASE_EXACT_ENABLED:
+        add("exact", settings.X402_BASE_NETWORK, settings.X402_BASE_ASSET, settings.X402_BASE_PAY_TO, base_extra)
+    if settings.X402_BASE_UPTO_ENABLED and settings.X402_BASE_SIGNER_ADDRESS:
+        add(
+            "upto",
+            settings.X402_BASE_NETWORK,
+            settings.X402_BASE_ASSET,
+            settings.X402_BASE_PAY_TO,
+            {
+                "chainId": settings.X402_BASE_CHAIN_ID,
+                "facilitatorAddress": settings.X402_BASE_SIGNER_ADDRESS,
+                "name": "Permit2",
+            },
+        )
+    if settings.X402_SKALE_EXACT_ENABLED:
+        add(
+            "exact",
+            SKALE_MAINNET,
+            settings.X402_SKALE_ASSET,
+            settings.X402_SKALE_PAY_TO,
+            {
+                "chainId": settings.X402_SKALE_CHAIN_ID,
+                "name": "Bridged USDC (SKALE Bridge)",
+                "version": "2",
+                "verifyingContract": settings.X402_SKALE_ASSET,
+            },
+        )
+    if settings.X402_SOLANA_MAINNET_ENABLED and settings.X402_SOLANA_SIGNER_ADDRESS:
+        add(
+            "exact",
+            SOLANA_MAINNET_CAIP2,
+            settings.X402_SOLANA_ASSET,
+            settings.X402_SOLANA_PAY_TO,
+            {"decimals": 6, "feePayer": settings.X402_SOLANA_SIGNER_ADDRESS},
+        )
+    return accepts
+
+
+def _valid_discovery_resource(resource: object) -> bool:
+    if not isinstance(resource, str):
+        return False
+    parsed = urlsplit(resource)
+    return bool(
+        parsed.scheme == "https"
+        and parsed.hostname
+        and not parsed.username
+        and not parsed.password
+        and not parsed.query
+        and not parsed.fragment
+        and parsed.hostname.lower() in settings.X402_DISCOVERY_RESOURCE_HOSTS
+    )
+
+
+def _valid_discovery_catalog(data: dict) -> bool:
+    items = data.get("items")
+    if data.get("x402Version") != 2 or not isinstance(items, list) or not isinstance(data.get("pagination"), dict):
+        return False
+    resources = []
+    for item in items:
+        if not isinstance(item, dict) or not _valid_discovery_resource(item.get("resource")):
+            return False
+        resource = item["resource"]
+        accepts = item.get("accepts")
+        if not isinstance(accepts, list):
+            return False
+        if any(not isinstance(value, dict) or value.get("resource", resource) != resource for value in accepts):
+            return False
+        resources.append(resource)
+    return len(resources) == len(set(resources))
+
+
+def _catalog_from_resources(data: dict, request) -> dict | None:  # noqa: ANN001
+    resources = data.get("resources")
+    if data.get("version") != 1 or not isinstance(resources, list):
+        return None
+    allowed_hosts = settings.X402_DISCOVERY_RESOURCE_HOSTS
+    if not allowed_hosts or not resources:
+        return None
+    normalized = []
+    for resource in resources:
+        if not _valid_discovery_resource(resource):
+            return None
+        normalized.append(resource)
+    if len(normalized) != len(set(normalized)):
+        return None
+    try:
+        limit = max(1, min(int(request.GET.get("limit", "100")), 500))
+        offset = max(0, int(request.GET.get("offset", "0")))
+    except (TypeError, ValueError):
+        limit, offset = 100, 0
+    accepts = _discovery_accepts()
+    last_updated = datetime.now(timezone.utc).isoformat()
+    items = []
+    for resource in normalized[offset : offset + limit]:
+        path = urlsplit(resource).path or "/"
+        resource_accepts = []
+        for requirement in accepts:
+            value = dict(requirement)
+            value["resource"] = resource
+            value["description"] = f"AceDataCloud API: {path}"
+            resource_accepts.append(value)
+        items.append(
+            {
+                "resource": resource,
+                "type": "http",
+                "x402Version": 2,
+                "accepts": resource_accepts,
+                "lastUpdated": last_updated,
+                "metadata": None,
+            }
+        )
+    return {
+        "x402Version": 2,
+        "items": items,
+        "pagination": {"limit": limit, "offset": offset, "total": len(normalized)},
+    }
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -200,6 +344,7 @@ def discovery_resources(request):  # noqa: ANN001
     url = settings.X402_DISCOVERY_URL
     parsed = urlsplit(url)
     allowed_hosts = settings.X402_DISCOVERY_ALLOWED_HOSTS
+    request_host = request.get_host().split(":", 1)[0].lower()
     if (
         parsed.scheme != "https"
         or not parsed.hostname
@@ -208,6 +353,7 @@ def discovery_resources(request):  # noqa: ANN001
         or parsed.query
         or parsed.fragment
         or parsed.hostname.lower() not in allowed_hosts
+        or parsed.hostname.lower() == request_host
     ):
         return JsonResponse({"error": "Resource discovery is unavailable."}, status=503)
     try:
@@ -219,9 +365,16 @@ def discovery_resources(request):  # noqa: ANN001
         data = json.loads(raw)
     except (OSError, ValueError, urllib.error.URLError):
         return JsonResponse({"error": "Resource discovery is unavailable."}, status=503)
-    if not isinstance(data, dict) or not {"x402Version", "items", "pagination"}.issubset(data):
+    if not isinstance(data, dict):
         return JsonResponse({"error": "Resource discovery returned an invalid response."}, status=503)
-    return JsonResponse(data)
+    if {"x402Version", "items", "pagination"}.issubset(data):
+        if _valid_discovery_catalog(data):
+            return JsonResponse(data)
+        return JsonResponse({"error": "Resource discovery returned an invalid response."}, status=503)
+    catalog = _catalog_from_resources(data, request)
+    if catalog is None:
+        return JsonResponse({"error": "Resource discovery returned an invalid response."}, status=503)
+    return JsonResponse(catalog)
 
 
 def discovery_list(request):  # noqa: ANN001
