@@ -67,6 +67,21 @@ class ReconciliationCommandTests(TestCase):
         stale.refresh_from_db()
         self.assertEqual(stale.status, X402Authorization.Status.VERIFIED)
 
+    @patch("x402f.management.commands.reconcile_x402._configured")
+    @patch("x402f.management.commands.reconcile_x402._transaction_status", return_value="failed")
+    def test_legacy_skale_network_uses_caip2_signer_and_releases_failed_transaction(self, _status, configured) -> None:
+        signer = Mock()
+        configured.return_value = SimpleNamespace(signer_for=lambda _network: signer)
+        legacy = record(transaction_hash="0xlegacy")
+        legacy.payment_requirements = {"network": "skale"}
+        legacy.save(update_fields=["payment_requirements"])
+
+        self.assertEqual(reconcile_record(legacy), "failed_released")
+        configured.assert_called_once_with("eip155:1187947933")
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.status, X402Authorization.Status.VERIFIED)
+        self.assertIsNone(legacy.transaction_hash)
+
     @override_settings(X402_PREPARED_MAX_AGE_SECONDS=60)
     @patch("x402f.management.commands.reconcile_x402._configured")
     @patch("x402f.management.commands.reconcile_x402._transaction_status", return_value="pending")

@@ -4,8 +4,10 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 from django.utils import timezone
+from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
 
 from x402f.models import X402Authorization
+from x402f.official import SKALE_MAINNET
 from x402f.views_official import (
     _broadcast_prepared,
     _configured,
@@ -13,11 +15,19 @@ from x402f.views_official import (
     _transaction_status,
 )
 
+LEGACY_NETWORKS = {
+    "base": "eip155:8453",
+    "skale": SKALE_MAINNET,
+    "solana": SOLANA_MAINNET_CAIP2,
+    "solana-devnet": SOLANA_DEVNET_CAIP2,
+}
+
 
 def reconcile_record(record: X402Authorization) -> str:
-    network = str(record.payment_requirements.get("network") or "")
-    if not network:
+    stored_network = str(record.payment_requirements.get("network") or "")
+    if not stored_network:
         return "invalid"
+    network = LEGACY_NETWORKS.get(stored_network, stored_network)
     if not record.transaction_hash:
         updated = X402Authorization.objects.filter(
             pk=record.pk,
