@@ -18,7 +18,11 @@ from pydantic import BaseModel, ValidationError
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
+from x402.mechanisms.svm.constants import (
+    ERR_DUPLICATE_SETTLEMENT,
+    SOLANA_DEVNET_CAIP2,
+    SOLANA_MAINNET_CAIP2,
+)
 from x402.mechanisms.svm.types import ExactSvmPayload
 from x402.mechanisms.svm.utils import (
     decode_transaction_from_payload,
@@ -128,14 +132,20 @@ def _invalid_verify(reason: str) -> Response:
     return _response(VerifyResponse(is_valid=False, invalid_reason=reason))
 
 
-def _failed_settle(reason: str, transaction_hash: str = "", network: str | None = None) -> Response:
+def _failed_settle(
+    reason: str,
+    transaction_hash: str = "",
+    network: str | None = None,
+    status_code: int = status.HTTP_200_OK,
+) -> Response:
     return _response(
         SettleResponse(
             success=False,
             error_reason=reason,
             transaction=transaction_hash,
             network=network or configured_base_network(),
-        )
+        ),
+        status_code,
     )
 
 
@@ -392,9 +402,9 @@ class X402SettleView(APIView):
         expected_token = settings.X402_SETTLE_TOKEN
         supplied_token = request.headers.get("X-Settlement-Token", "")
         if not expected_token or not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
-            return Response(
-                {"success": False, "errorReason": "Unauthorized settlement caller."},
-                status=status.HTTP_403_FORBIDDEN,
+            return _failed_settle(
+                "Unauthorized settlement caller.",
+                status_code=status.HTTP_403_FORBIDDEN,
             )
         try:
             settle_request = _parse_request(request.data, SettleRequest)
@@ -421,6 +431,11 @@ class X402SettleView(APIView):
         if not requirements_match or incoming_payload != record.payment_payload:
             return _failed_settle("Payment payload or requirements do not match verification.", network=network)
         if record.status == X402Authorization.Status.SETTLED:
+            if network.startswith("solana:"):
+                return _failed_settle(
+                    ERR_DUPLICATE_SETTLEMENT,
+                    network=network,
+                )
             return _response(
                 SettleResponse(
                     success=True,

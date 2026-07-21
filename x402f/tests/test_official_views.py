@@ -203,6 +203,26 @@ class OfficialViewTests(TestCase):
         self.assertFalse(response.json()["isValid"])
         self.assertIn("EIP-3009", response.json()["invalidReason"])
 
+    def test_settle_authentication_failures_use_official_response_schema(self) -> None:
+        for headers in ({}, {"HTTP_X_SETTLEMENT_TOKEN": "wrong-secret"}):
+            response = self.client.post(
+                reverse("x402:settle"),
+                data=json.dumps(self.body),
+                content_type="application/json",
+                **headers,
+            )
+
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(
+                response.json(),
+                {
+                    "success": False,
+                    "errorReason": "Unauthorized settlement caller.",
+                    "transaction": "",
+                    "network": "eip155:8453",
+                },
+            )
+
     @patch("x402f.views_official.build_configured_facilitator")
     def test_verify_reserves_official_authorization_and_accepts_identical_retry(self, factory) -> None:
         factory.side_effect = self._facilitator_factory
@@ -408,6 +428,48 @@ class OfficialViewTests(TestCase):
         record = X402Authorization.objects.get()
         self.assertEqual(record.status, X402Authorization.Status.SETTLED)
         self.assertEqual(factory.call_count, 2)
+
+    def test_settled_solana_payment_rejects_duplicate_settlement(self) -> None:
+        body = self.body
+        network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        body["paymentPayload"]["accepted"]["network"] = network
+        body["paymentRequirements"]["network"] = network
+        body["paymentRequirements"]["asset"] = "mint"
+        body["paymentRequirements"]["payTo"] = "payee"
+        body["paymentPayload"]["payload"] = {"transaction": "base64-transaction"}
+        X402Authorization.objects.create(
+            nonce=f"svm:{network}:message-hash",
+            payer="payer-address",
+            pay_to="payee",
+            value="1",
+            valid_after=timezone.now(),
+            valid_before=timezone.now() + timedelta(minutes=1),
+            signature="payload-hash",
+            payment_requirements=body["paymentRequirements"],
+            payment_payload=body["paymentPayload"],
+            scheme="exact",
+            status=X402Authorization.Status.SETTLED,
+            transaction_hash="solana-signature",
+            settled_amount="1",
+        )
+
+        with (
+            override_settings(
+                X402_SOLANA_MAINNET_ENABLED=True,
+                X402_SOLANA_ASSET="mint",
+                X402_SOLANA_PAY_TO="payee",
+            ),
+            patch("x402f.views_official.decode_transaction_from_payload", return_value=SimpleNamespace()),
+            patch("x402f.views_official.transaction_message_hash", return_value="message-hash"),
+            patch("x402f.views_official.get_token_payer_from_transaction", return_value="payer-address"),
+            patch("x402f.views_official.hashlib.sha256") as sha256,
+        ):
+            sha256.return_value.hexdigest.return_value = "payload-hash"
+            response = self._settle(body)
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["errorReason"], "duplicate_settlement")
+        self.assertEqual(response.json()["transaction"], "")
 
     @patch("x402f.views_official.build_configured_facilitator")
     def test_settle_rejects_payload_changed_after_verify(self, factory) -> None:
