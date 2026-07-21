@@ -7,6 +7,7 @@ MANIFEST="$(mktemp)"
 MIGRATION_MANIFEST="$(mktemp)"
 SNAPSHOT_DIR="$(mktemp -d)"
 ROLLOUT_COMPLETE=0
+SMOKE_JOB=""
 RESOURCES=(
   configmap/facilitator2-config
   deployment/facilitator2-backend
@@ -49,6 +50,9 @@ done
 cleanup() {
   exit_code=$?
   trap - EXIT INT TERM
+  if [ -n "$SMOKE_JOB" ]; then
+    kubectl delete job "$SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null 2>&1 || true
+  fi
   if [ "$exit_code" -ne 0 ] && [ "$ROLLOUT_COMPLETE" -ne 1 ]; then
     rollback_failed=0
     for resource in "${RESOURCES[@]}"; do
@@ -69,7 +73,8 @@ cleanup() {
   rm -rf "$SNAPSHOT_DIR"
   exit "$exit_code"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 for key in \
   APP_SECRET_KEY \
@@ -98,17 +103,18 @@ test "$(kubectl get deployment facilitator2-backend -n acedatacloud -o jsonpath=
 
 EXPECTED='["exact:eip155:1187947933","exact:eip155:8453","exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp","upto:eip155:8453"]'
 kubectl exec deployment/facilitator2-backend -n acedatacloud -- \
-  python -c 'import json,urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:8000/supported",timeout=10)); print(json.dumps(sorted(f"{item[\"scheme\"]}:{item[\"network\"]}" for item in data["kinds"])))' | \
+  python -c 'import json,urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:8000/supported",timeout=10)); print(json.dumps(sorted(item["scheme"] + ":" + str(item["network"]) for item in data["kinds"])))' | \
   jq -e --argjson expected "$EXPECTED" '. == $expected' >/dev/null
 /usr/bin/curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
   https://facilitator2.acedata.cloud/supported | \
   jq -e --argjson expected "$EXPECTED" '[.kinds[] | "\(.scheme):\(.network)"] | sort == $expected' >/dev/null
 
-job="facilitator2-reconcile-smoke-${GITHUB_SHA:0:8}"
-kubectl delete job "$job" -n acedatacloud --ignore-not-found >/dev/null
-kubectl create job "$job" -n acedatacloud --from=cronjob/facilitator2-reconcile
-kubectl wait --for=condition=complete "job/$job" -n acedatacloud --timeout=120s
-kubectl logs "job/$job" -n acedatacloud
-kubectl delete job "$job" -n acedatacloud --ignore-not-found >/dev/null
+SMOKE_JOB="facilitator2-reconcile-smoke-${GITHUB_SHA:0:8}"
+kubectl delete job "$SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
+kubectl create job "$SMOKE_JOB" -n acedatacloud --from=cronjob/facilitator2-reconcile
+kubectl wait --for=condition=complete "job/$SMOKE_JOB" -n acedatacloud --timeout=120s
+kubectl logs "job/$SMOKE_JOB" -n acedatacloud
+kubectl delete job "$SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
+SMOKE_JOB=""
 
 ROLLOUT_COMPLETE=1
