@@ -1,127 +1,106 @@
 # Ace Data Cloud Facilitator X402
 
-Ace Data Cloud runs Facilitator X402 as the production settlement engine behind the X402 payment protocol. The service is publicly available at [https://facilitator.acedata.cloud](https://facilitator.acedata.cloud) and ties into the wider Ace Data Cloud platform at [https://platform.acedata.cloud](https://platform.acedata.cloud).
+Official verification and settlement implementation for the x402 v2 protocol,
+built on the Python SDK (`x402==2.16.0`). The candidate is validated at
+<https://facilitator2.acedata.cloud>. The canonical
+<https://facilitator.acedata.cloud> endpoint must not switch until the production
+cutover and rollback runbook completes.
 
-## X402 at a glance
+## Production rails
 
-[x402](https://x402.org) is an open protocol that brings stablecoin payments to plain HTTP by reviving status code **402 Payment Required**:
+| Scheme | Network | CAIP-2 identifier | Asset |
+| --- | --- | --- | --- |
+| exact | Base mainnet | `eip155:8453` | Circle USDC |
+| upto | Base mainnet | `eip155:8453` | Circle USDC through Permit2 |
+| exact | SKALE Base | `eip155:1187947933` | Bridged USDC |
+| exact | Solana mainnet | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | SPL USDC |
 
-- Clients obtain payment instructions through a standard HTTP response, then respond with a typed authorization.
-- Signatures use EIP-712 typed data so destination, amount, validity window, and nonce are all cryptographically bound.
-- Nonces eliminate replay; facilitators store each authorization before allowing settlement.
-- Usage-based pricing, micropayments, and machine-to-machine scenarios become first-class—with no accounts, API keys, or session management.
+Solana devnet support exists behind configuration and is disabled by default.
+It is a testnet compatibility option, not a production rail.
 
-### Why it matters
+## API
 
-Web-scale applications and AI agents need instant, programmable settlement. Legacy payment flows are slow and require pre-established credentials. x402 embeds payment in the request–response cycle, enabling trust-minimized pay-per-request experiences with the reach of the public internet.
+- `GET /healthz`: liveness and readiness probe.
+- `GET /supported`: official facilitator kinds, extensions, and signer
+  addresses.
+- `POST /verify`: validate and reserve a v2 payment authorization.
+- `POST /settle`: settle a verified authorization. This endpoint requires
+  `X-Settlement-Token`.
+- `GET /.well-known/x402`: facilitator metadata.
+- `GET /discovery/resources`: paginated CAIP-2 resource catalog.
+- `GET /list`: compatibility redirect to discovery.
 
-### Protocol flow
+The official SDK handles protocol parsing, signature verification, simulation,
+and transaction construction. This service adds:
 
-1. The client requests a protected resource.
-2. The server returns HTTP 402 with x402 `paymentRequirements`.
-3. The client signs a `TransferWithAuthorization` payload and sends it back.
-4. Facilitator X402 verifies, settles on-chain, and the resource is released.
-
-![x402 sequence](https://cdn.acedata.cloud/30qdwn.jpg)
-
-## Facilitator capabilities
-
-- **Authorization verification** – `POST /verify` checks payload integrity and signature, enforces caps/validity, and persists the nonce for replay protection.
-- **Settlement execution** – `POST /settle` re-validates the stored authorization, invokes `transferWithAuthorization`, waits for the receipt, and marks the record as settled.
-- **Operational endpoints** – `/` serves a facilitator overview for humans, while `/healthz` exposes a JSON probe for L7 load balancers.
-- **Web3 integration** – Configurable RPC endpoint, gas limits, and optional EIP-1559 fees. Supports any stablecoin contract address supplied in the request.
-- **Automated delivery** – `.github/workflows/deploy.yaml` builds & deploys to Kubernetes using `deploy/run.sh` and the manifests under `deploy/production/`.
+- PostgreSQL-backed authorization and settlement state;
+- per-network PostgreSQL advisory locks across two replicas;
+- prepared transaction persistence before broadcast;
+- deterministic recovery and reconciliation;
+- asset and recipient allowlists;
+- authenticated settlement and replay protection.
 
 ## Configuration
 
-Environment variables govern runtime behaviour (see the supplied `.env`).
+Database settings:
 
-| Variable                                                                                 | Description                                   | Required | Default                    |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------- | -------- | -------------------------- |
-| `APP_ENV`                                                                                | Environment (local, production, …)            | No       | `local`                    |
-| `APP_SECRET_KEY`                                                                         | Django secret key                             | Yes      | —                          |
-| `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`, `PGSQL_DATABASE_FACILITATOR` | PostgreSQL connection info                    | Yes      | —                          |
-| `X402_RPC_URL`                                                                           | RPC endpoint used for settlement transactions | Yes      | —                          |
-| `X402_SIGNER_PRIVATE_KEY`                                                                | Private key used to sign settlements          | Yes      | —                          |
-| `X402_SIGNER_ADDRESS`                                                                    | Optional explicit signer address              | No       | derived from key           |
-| `X402_GAS_LIMIT`                                                                         | Gas limit applied to settlements              | No       | `250000`                   |
-| `X402_TX_TIMEOUT_SECONDS`                                                                | Timeout (seconds) waiting for receipts        | No       | `120`                      |
-| `X402_MAX_FEE_PER_GAS_WEI`                                                               | Max fee per gas (EIP-1559)                    | No       | `0` (use legacy gas price) |
-| `X402_MAX_PRIORITY_FEE_PER_GAS_WEI`                                                      | Priority fee per gas (EIP-1559)               | No       | `0`                        |
+- `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`
+- `PGSQL_DATABASE_FACILITATOR`
 
-Callers are responsible for restricting `pay_to`, `asset`, and `network` values in payloads to approved destinations.
+Core settings:
 
-## Development workflow
+- `APP_ENV`, `APP_SECRET_KEY`, `ALLOWED_HOSTS`
+- `X402_SETTLE_TOKEN`
+- `X402_FACILITATOR_PUBLIC_URL`
+- `X402_SETTLEMENT_LEASE_SECONDS`
+- `X402_PREPARED_MAX_AGE_SECONDS`
+- `X402_TX_TIMEOUT_SECONDS`
+
+Each enabled rail requires its RPC URL, signer key/address, approved asset, and
+approved recipient. See [docs/migration.md](docs/migration.md) for the complete
+Base, SKALE, Solana, discovery, migration, cutover, and rollback configuration.
+
+## Development
 
 ```bash
-# install dependencies
-pip install -r <(poetry export -f requirements.txt --without-hashes)
-# or
 poetry install
-
-# apply migrations
-python manage.py migrate
-
-# start locally
-python manage.py runserver 0.0.0.0:8008
+poetry run python manage.py migrate
+poetry run python manage.py runserver 0.0.0.0:8008
 ```
 
-## Containers and deployment
+Run validation:
 
-- `docker-compose build && docker-compose up` runs the service with `uvicorn core.asgi:application --host 0.0.0.0 --port 8000`.
-- Kubernetes manifests live under `deploy/production`. Use `deploy/run.sh` during CI/CD to substitute the build number and apply.
-- The GitHub Actions workflow `.github/workflows/deploy.yaml` handles build → push → rollout to the Ace Data Cloud cluster.
-
-## API quick reference
-
-```http
-POST /verify
-Content-Type: application/json
-
-{
-  "paymentPayload": { ... },
-  "paymentRequirements": { ... }
-}
+```bash
+poetry run pytest -q
+poetry run ruff check .
+poetry run ruff format --check .
 ```
 
-Response:
+Local container:
 
-```json
-{ "isValid": true, "invalidReason": null, "payer": "0x..." }
+```bash
+docker compose build
+docker compose up
 ```
 
-```http
-POST /settle
-```
+Compose loads the gitignored `.env` when present. It can still build without the
+file in CI, but payment rails require their configured RPC, signer, asset, and
+recipient values before runtime use.
 
-Response on success:
+The shared image runs as non-root UID/GID `10001` and serves ASGI with Uvicorn
+on port 8000.
 
-```json
-{
-  "success": true,
-  "transaction": "0xabc123...",
-  "network": "base",
-  "payer": "0x..."
-}
-```
+## Delivery
 
-Failures return `success: false` with `errorReason` explaining validation failures, replay detection, RPC timeouts, or on-chain reverts.
+- `.github/workflows/ci.yaml`: PR test, lint, and Docker build.
+- `.github/workflows/canary.yaml`: isolated `facilitator2.acedata.cloud`
+  candidate validation using `deploy/canary/run-parity.sh`.
+- `.github/workflows/deploy.yaml`: manual production build and cutover from
+  `main` through `deploy/run.sh`.
 
-## Repository layout
+Production deployment uses a Recreate strategy to prevent old and official
+settlement semantics from overlapping. The runbook quiesces traffic, checks
+legacy records, applies migrations, deploys two replicas, starts reconciliation,
+and rolls back the Deployment and CronJob if validation fails.
 
-```
-FacilitatorBackend/
-├── core/
-├── x402f/
-├── deploy/
-├── Dockerfile
-├── docker-compose.yaml
-├── pyproject.toml
-└── README.md
-```
-
-## Production footprint and contact
-
-- Facilitator endpoint: [https://facilitator.acedata.cloud](https://facilitator.acedata.cloud)
-- Ace Data Cloud platform: [https://platform.acedata.cloud](https://platform.acedata.cloud)
-- Updates and coordination: [https://x.com/acedatacloud](https://x.com/acedatacloud)
+See [docs/migration.md](docs/migration.md) before any production cutover.

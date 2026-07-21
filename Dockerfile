@@ -1,19 +1,24 @@
-FROM python:3.10 as requirements-stage
+FROM python:3.10 AS requirements-stage
 WORKDIR /tmp
 RUN pip install poetry==1.8.5
 COPY ./pyproject.toml ./poetry.lock* /tmp/
 RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
 
 FROM python:3.10-slim
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
   gcc \
   git \
   libpq-dev \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --gid 10001 facilitator \
+  && useradd --uid 10001 --gid facilitator --home-dir /home/facilitator --create-home facilitator
 WORKDIR /code
 COPY --from=requirements-stage /tmp/requirements.txt /code/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 COPY . /code/
-RUN python manage.py collectstatic --noinput
+RUN python manage.py collectstatic --noinput \
+  && chown -R facilitator:facilitator /code /home/facilitator
+USER 10001:10001
 CMD ["uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
