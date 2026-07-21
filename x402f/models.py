@@ -10,6 +10,7 @@ class X402Authorization(models.Model):
         FAILED = "failed", "Failed"
 
     nonce = models.CharField(max_length=128, unique=True)
+    verification_id = models.CharField(max_length=128, blank=True, null=True)
     # Multi-chain support: EVM addresses (42 chars) + Solana (base58 ~44 chars) + future chains
     payer = models.CharField(max_length=128)
     pay_to = models.CharField(max_length=128)

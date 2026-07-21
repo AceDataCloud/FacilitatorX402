@@ -1,11 +1,16 @@
+import base64
 from collections.abc import Callable
 
 from hexbytes import HexBytes
+from solders.signature import Signature
+from solders.transaction import VersionedTransaction
+from solders.transaction_status import TransactionConfirmationStatus
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 from x402.mechanisms.evm.data_suffix import append_data_suffix
 from x402.mechanisms.evm.signer import TransactionReceipt
 from x402.mechanisms.evm.signers import FacilitatorWeb3Signer
+from x402.mechanisms.svm.signers import FacilitatorKeypairSigner
 
 
 class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
@@ -98,3 +103,56 @@ class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
         except TransactionNotFound:
             return "pending"
         return "confirmed" if receipt["status"] == 1 else "failed"
+
+
+class DurableFacilitatorSvmSigner(FacilitatorKeypairSigner):
+    def __init__(
+        self,
+        private_key: str,
+        rpc_url: str,
+        on_transaction_prepared: Callable[[str, str, int | None], None] | None = None,
+        on_transaction_broadcast: Callable[[str], None] | None = None,
+    ) -> None:
+        signer = FacilitatorKeypairSigner.from_base58(private_key, rpc_url)
+        super().__init__(list(signer._keypairs.values()), rpc_url)
+        self._on_transaction_prepared = on_transaction_prepared
+        self._on_transaction_broadcast = on_transaction_broadcast
+
+    @staticmethod
+    def transaction_signature(tx_base64: str) -> str:
+        transaction = VersionedTransaction.from_bytes(base64.b64decode(tx_base64))
+        signature = str(transaction.signatures[0])
+        if signature == str(Signature.default()):
+            raise RuntimeError("SVM facilitator transaction has no fee payer signature")
+        return signature
+
+    def sign_transaction(self, tx_base64: str, fee_payer: str, network: str) -> str:
+        return super().sign_transaction(tx_base64, fee_payer, network)
+
+    def send_transaction(self, tx_base64: str, network: str) -> str:
+        expected = self.transaction_signature(tx_base64)
+        if self._on_transaction_prepared:
+            self._on_transaction_prepared(expected, tx_base64, None)
+        submitted = super().send_transaction(tx_base64, network)
+        if submitted != expected:
+            raise RuntimeError("RPC returned a different SVM settlement signature")
+        if self._on_transaction_broadcast:
+            self._on_transaction_broadcast(submitted)
+        return submitted
+
+    def broadcast_prepared(self, tx_base64: str, network: str) -> str:
+        return self.send_transaction(tx_base64, network)
+
+    def get_transaction_status(self, signature: str, network: str) -> str:
+        result = self._get_client(network).get_signature_statuses([Signature.from_string(signature)])
+        if not result.value or result.value[0] is None:
+            return "pending"
+        status = result.value[0]
+        if status.err:
+            return "failed"
+        return (
+            "confirmed"
+            if status.confirmation_status == TransactionConfirmationStatus.Confirmed
+            or status.confirmation_status == TransactionConfirmationStatus.Finalized
+            else "pending"
+        )
