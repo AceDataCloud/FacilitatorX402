@@ -24,5 +24,5 @@ data:
   X402_TX_TIMEOUT_SECONDS: "120"
   X402_SETTLEMENT_LEASE_SECONDS: "300"
   X402_PREPARED_MAX_AGE_SECONDS: "1800"
-  X402_DISCOVERY_URL: https://x402.acedata.cloud/discovery/resources
-  X402_DISCOVERY_ALLOWED_HOSTS: x402.acedata.cloud
+  X402_DISCOVERY_URL: https://facilitator.acedata.cloud/discovery/resources
+  X402_DISCOVERY_ALLOWED_HOSTS: facilitator.acedata.cloud
