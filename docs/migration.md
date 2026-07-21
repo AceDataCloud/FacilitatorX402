@@ -134,7 +134,7 @@ locking, recovery, authorization policy, deployment, and observability.
   migration tests replace legacy handler tests.
 - `.github/workflows/canary.yaml` tests, builds, publishes, and deploys an
   isolated image to the Silicon Valley cluster.
-- `Dockerfile.canary` provides the isolated candidate image.
+- The candidate workflow builds the shared non-root `Dockerfile`.
 - `deploy/canary/` contains the candidate ConfigMap, migration Job, Deployment,
   Service, Ingress, CronJob, smoke checks, and rollback script.
 
@@ -418,3 +418,7 @@ have been checked.
 - Add optional x402 extensions such as `payment-identifier`, signed receipts,
   builder attribution, approval gas sponsoring, or batch settlement when product
   requirements justify them.
+- After the rollback retention window, back up and remove the unmounted legacy
+  `facilitator2-data` SQLite PVC and unused `facilitator2-runtime` Secret. Do not
+  remove `facilitator2-parity-runtime` while the candidate deployment remains
+  active.
