@@ -129,6 +129,9 @@ X402_DISCOVERY_URL = env.str("X402_DISCOVERY_URL", "")
 X402_DISCOVERY_ALLOWED_HOSTS = tuple(
     host.strip().lower() for host in env.list("X402_DISCOVERY_ALLOWED_HOSTS", []) if host.strip()
 )
+X402_DISCOVERY_RESOURCE_HOSTS = tuple(
+    host.strip().lower() for host in env.list("X402_DISCOVERY_RESOURCE_HOSTS", ["x402.acedata.cloud"]) if host.strip()
+)
 X402_FACILITATOR_PUBLIC_URL = env.str("X402_FACILITATOR_PUBLIC_URL", "")
 
 X402_BASE_RPC_URL = env.str("X402_BASE_RPC_URL", "")
