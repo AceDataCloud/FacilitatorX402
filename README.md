@@ -1,10 +1,9 @@
 # Ace Data Cloud Facilitator X402
 
 Official verification and settlement implementation for the x402 v2 protocol,
-built on the Python SDK (`x402==2.16.0`). The candidate is validated at
-<https://facilitator2.acedata.cloud>. The canonical
-<https://facilitator.acedata.cloud> endpoint must not switch until the production
-cutover and rollback runbook completes.
+built on the Python SDK (`x402==2.16.0`). The canonical production endpoint is
+<https://facilitator.acedata.cloud>. The temporary validation candidate was
+retired after the official-v2 production cutover completed in July 2026.
 
 ## Production rails
 
@@ -93,9 +92,7 @@ on port 8000.
 ## Delivery
 
 - `.github/workflows/ci.yaml`: PR test, lint, and Docker build.
-- `.github/workflows/canary.yaml`: isolated `facilitator2.acedata.cloud`
-  candidate validation using `deploy/canary/run-parity.sh`.
-- `.github/workflows/deploy.yaml`: manual production build and cutover from
+- `.github/workflows/deploy.yaml`: manual production build and deployment from
   `main` through `deploy/run.sh`.
 
 Production deployment uses a Recreate strategy to prevent old and official
@@ -103,4 +100,5 @@ settlement semantics from overlapping. The runbook quiesces traffic, checks
 legacy records, applies migrations, deploys two replicas, starts reconciliation,
 and rolls back the Deployment and CronJob if validation fails.
 
-See [docs/migration.md](docs/migration.md) before any production cutover.
+See [docs/migration.md](docs/migration.md) for the completed official-v2
+migration record and rollback constraints.
