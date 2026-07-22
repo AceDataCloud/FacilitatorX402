@@ -7,10 +7,9 @@ and data migration from the self-written multi-chain facilitator to the official
 `x402==2.16.0` schemes.
 
 The merged change touched 42 files with 2,549 additions and 5,952 deletions.
-It does not, by itself, move `facilitator.acedata.cloud` traffic. The official
-implementation is currently validated at `https://facilitator2.acedata.cloud`;
-production traffic migration and rollback rehearsal remain separate release
-steps.
+The official implementation was subsequently promoted to
+`https://facilitator.acedata.cloud`; the temporary validation endpoint was
+retired after the July 2026 production cutover.
 
 The follow-up migration PR also aligns the production manifests with the
 validated candidate: all four production rails are mapped from the `x402`
@@ -101,7 +100,7 @@ locking, recovery, authorization policy, deployment, and observability.
   - preserves pending EVM nonce ownership instead of unsafe reallocation.
 - Recovery-only aliases map historical `base`, `skale`, `solana`, and
   `solana-devnet` records to CAIP-2 without rewriting stored identity.
-- A reconciliation CronJob runs every minute in the candidate deployment.
+- A reconciliation CronJob runs every minute in production.
 
 ### Discovery and operations
 
@@ -120,7 +119,7 @@ locking, recovery, authorization policy, deployment, and observability.
   A source whose host equals the public facilitator host is rejected to prevent
   recursive discovery after domain cutover.
 - `/list` permanently redirects to `/discovery/resources` for compatibility.
-- The candidate deployment adds:
+- The production deployment provides:
   - two replicas;
   - readiness and liveness probes;
   - PostgreSQL-backed state;
@@ -132,11 +131,9 @@ locking, recovery, authorization policy, deployment, and observability.
 
 - Official facilitator, view, SVM signer, reconciliation, discovery proxy, and
   migration tests replace legacy handler tests.
-- `.github/workflows/canary.yaml` tests, builds, publishes, and deploys an
-  isolated image to the Silicon Valley cluster.
-- The candidate workflow builds the shared non-root `Dockerfile`.
-- `deploy/canary/` contains the candidate ConfigMap, migration Job, Deployment,
-  Service, Ingress, CronJob, smoke checks, and rollback script.
+- `.github/workflows/ci.yaml` validates the shared non-root `Dockerfile`.
+- `.github/workflows/deploy.yaml` deploys the canonical production resources
+  from `deploy/production/`.
 
 ## What was removed
 
@@ -310,14 +307,17 @@ are nullable and the widened signature field is compatible with the previous
 application. Rolling back schema first could make new rows unreadable or truncate
 official signatures.
 
-## Cutover runbook
+## Historical cutover runbook
+
+The following sequence records the completed July 2026 cutover. It is retained
+for rollback analysis and must not be rerun as a current deployment procedure.
 
 The production runbook is implemented by `deploy/run.sh`.
 
 1. Confirm the release image passed tests, Docker build, and candidate-chain
    validation.
 2. Populate and verify all required Kubernetes Secret or SSM values. Compare the
-   expected production kinds with `https://facilitator2.acedata.cloud/supported`.
+  expected production kinds with the validated release artifact.
 3. Disable the Gateway x402 feature that creates new legacy authorizations.
 4. Snapshot the current `facilitator-backend` Deployment specification.
 5. Scale the legacy Deployment to zero and wait for its pods to terminate.
@@ -340,10 +340,9 @@ The production runbook is implemented by `deploy/run.sh`.
 13. Re-enable Gateway traffic gradually and monitor failures, pending
     reconciliation outcomes, signer balances, and duplicate-settlement errors.
 
-Before advancing traffic, `/supported` must advertise the intended production
-kinds with CAIP-2 identifiers. At the time this guide was written, the legacy
-production domain still advertised short names and five rails, while the
-candidate advertised the four validated production rails.
+Before advancing traffic, `/supported` had to advertise the intended production
+kinds with CAIP-2 identifiers. The validated release advertised the four
+production rails before traffic moved.
 
 ## Validation evidence
 
@@ -364,7 +363,7 @@ Additional validation included:
 - official `HTTPFacilitatorClientSync` interoperability through `AuthProvider`;
 - upto-over-ceiling and settle-before-verify rejection;
 - Solana finalized token balance deltas and duplicate-settlement rejection;
-- two ready candidate replicas with no restarts;
+- two ready validation replicas with no restarts;
 - clean CI test, lint, Docker build, image build, and SV deployment jobs.
 
 The migration follow-up adds production-manifest and discovery-cutover checks:
@@ -418,7 +417,3 @@ have been checked.
 - Add optional x402 extensions such as `payment-identifier`, signed receipts,
   builder attribution, approval gas sponsoring, or batch settlement when product
   requirements justify them.
-- After the rollback retention window, back up and remove the unmounted legacy
-  `facilitator2-data` SQLite PVC and unused `facilitator2-runtime` Secret. Do not
-  remove `facilitator2-parity-runtime` while the candidate deployment remains
-  active.
