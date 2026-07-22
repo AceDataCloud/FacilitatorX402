@@ -129,6 +129,7 @@ class OfficialViewTests(TestCase):
         X402_BASE_EXACT_ENABLED=True,
         X402_BASE_UPTO_ENABLED=True,
         X402_SKALE_EXACT_ENABLED=True,
+        X402_ROBINHOOD_EXACT_ENABLED=True,
         X402_SOLANA_MAINNET_ENABLED=True,
         X402_SOLANA_DEVNET_ENABLED=True,
     )
@@ -141,6 +142,7 @@ class OfficialViewTests(TestCase):
                 ("exact", "eip155:8453"),
                 ("upto", "eip155:8453"),
                 ("exact", "eip155:1187947933"),
+                ("exact", "eip155:4663"),
                 ("exact", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
                 ("exact", "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"),
             },
@@ -179,7 +181,30 @@ class OfficialViewTests(TestCase):
         with self.assertRaisesRegex(ValueError, "recipient"):
             _validate_policy(SimpleNamespace(payment_requirements=requirements))
 
-    def test_verify_rejects_legacy_request_shape(self) -> None:
+    @override_settings(
+        X402_ROBINHOOD_EXACT_ENABLED=True,
+        X402_ROBINHOOD_ASSET="0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        X402_ROBINHOOD_PAY_TO="0x1111111111111111111111111111111111111111",
+    )
+    def test_robinhood_policy_accepts_enabled_network(self) -> None:
+        requirements = SimpleNamespace(
+            network="eip155:4663",
+            scheme="exact",
+            asset="0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            pay_to="0x1111111111111111111111111111111111111111",
+        )
+        # Must not raise "Unsupported payment network": the rail policy is wired.
+        _validate_policy(SimpleNamespace(payment_requirements=requirements))
+
+    def test_robinhood_policy_rejected_when_disabled(self) -> None:
+        requirements = SimpleNamespace(
+            network="eip155:4663",
+            scheme="exact",
+            asset="0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            pay_to="0x1111111111111111111111111111111111111111",
+        )
+        with self.assertRaisesRegex(ValueError, "Unsupported payment kind"):
+            _validate_policy(SimpleNamespace(payment_requirements=requirements))
         response = self.client.post(
             reverse("x402:verify"),
             data=json.dumps({"paymentPayload": {"scheme": "exact", "network": "base"}}),

@@ -165,3 +165,17 @@ X402_SKALE_GAS_LIMIT = env.int("X402_SKALE_GAS_LIMIT", 50000000)
 X402_SKALE_ASSET = env.str("X402_SKALE_ASSET", "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20")
 X402_SKALE_PAY_TO = env.str("X402_SKALE_PAY_TO", "")
 X402_SKALE_EXACT_ENABLED = env.bool("X402_SKALE_EXACT_ENABLED", False)
+
+# Robinhood Chain (Arbitrum Orbit L2, chainId 4663, ETH gas). Settles in USDG,
+# the chain's native stablecoin — there is no canonical USDC. USDG is an EIP-2535
+# Diamond that supports EIP-3009 transferWithAuthorization but does not expose
+# version(), so token name/version are supplied via the payment requirement extra.
+X402_ROBINHOOD_RPC_URL = env.str("X402_ROBINHOOD_RPC_URL", "")
+X402_ROBINHOOD_SIGNER_PRIVATE_KEY = env.str("X402_ROBINHOOD_SIGNER_PRIVATE_KEY", "")
+X402_ROBINHOOD_SIGNER_ADDRESS = env.str("X402_ROBINHOOD_SIGNER_ADDRESS", "")
+X402_ROBINHOOD_CHAIN_ID = env.int("X402_ROBINHOOD_CHAIN_ID", 4663)
+X402_ROBINHOOD_GAS_LIMIT = env.int("X402_ROBINHOOD_GAS_LIMIT", 500000)
+# USDG (Global Dollar)
+X402_ROBINHOOD_ASSET = env.str("X402_ROBINHOOD_ASSET", "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168")
+X402_ROBINHOOD_PAY_TO = env.str("X402_ROBINHOOD_PAY_TO", "")
+X402_ROBINHOOD_EXACT_ENABLED = env.bool("X402_ROBINHOOD_EXACT_ENABLED", False)

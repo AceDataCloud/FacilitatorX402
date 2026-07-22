@@ -16,6 +16,7 @@ from x402f.official_signer import DurableFacilitatorSvmSigner, DurableFacilitato
 BASE_MAINNET = "eip155:8453"
 BASE_MAINNET_CHAIN_ID = 8453
 SKALE_MAINNET = "eip155:1187947933"
+ROBINHOOD_MAINNET = "eip155:4663"
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,20 @@ def build_configured_registry(
         signers[SKALE_MAINNET] = signer
         register_evm_schemes(facilitator, signer, [SKALE_MAINNET])
 
+    if settings.X402_ROBINHOOD_EXACT_ENABLED and (networks is None or ROBINHOOD_MAINNET in networks):
+        signer = _evm_signer(
+            label="Robinhood Chain",
+            rpc_url=settings.X402_ROBINHOOD_RPC_URL,
+            private_key=settings.X402_ROBINHOOD_SIGNER_PRIVATE_KEY,
+            address=settings.X402_ROBINHOOD_SIGNER_ADDRESS,
+            chain_id=settings.X402_ROBINHOOD_CHAIN_ID,
+            gas_limit=settings.X402_ROBINHOOD_GAS_LIMIT,
+            on_transaction_prepared=on_transaction_prepared,
+            on_transaction_broadcast=on_transaction_broadcast,
+        )
+        signers[ROBINHOOD_MAINNET] = signer
+        register_evm_schemes(facilitator, signer, [ROBINHOOD_MAINNET])
+
     solana_settings = (
         (
             settings.X402_SOLANA_MAINNET_ENABLED,
@@ -249,6 +264,11 @@ def configured_supported_response() -> SupportedResponse:
             raise RuntimeError("SKALE requires a configured signer address")
         kinds.append(SupportedKind(x402Version=2, scheme="exact", network=SKALE_MAINNET))
         evm_addresses.append(settings.X402_SKALE_SIGNER_ADDRESS)
+    if settings.X402_ROBINHOOD_EXACT_ENABLED:
+        if not settings.X402_ROBINHOOD_SIGNER_ADDRESS:
+            raise RuntimeError("Robinhood Chain requires a configured signer address")
+        kinds.append(SupportedKind(x402Version=2, scheme="exact", network=ROBINHOOD_MAINNET))
+        evm_addresses.append(settings.X402_ROBINHOOD_SIGNER_ADDRESS)
     if settings.X402_SOLANA_MAINNET_ENABLED:
         if not settings.X402_SOLANA_SIGNER_ADDRESS:
             raise RuntimeError("Solana mainnet requires a configured fee payer")

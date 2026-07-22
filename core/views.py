@@ -8,7 +8,7 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponsePermanentRedirect, JsonResponse
 from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
 
-from x402f.official import SKALE_MAINNET
+from x402f.official import ROBINHOOD_MAINNET, SKALE_MAINNET
 
 NETWORK_TO_CAIP2 = {
     "base": "eip155:8453",
@@ -68,6 +68,21 @@ def _discovery_accepts() -> list[dict]:
                 "name": "Bridged USDC (SKALE Bridge)",
                 "version": "2",
                 "verifyingContract": settings.X402_SKALE_ASSET,
+            },
+        )
+    if settings.X402_ROBINHOOD_EXACT_ENABLED:
+        # USDG is an EIP-2535 Diamond with no version() getter; its EIP-712 domain
+        # is name="Global Dollar", version="1" (verified on-chain, chainId 4663).
+        add(
+            "exact",
+            ROBINHOOD_MAINNET,
+            settings.X402_ROBINHOOD_ASSET,
+            settings.X402_ROBINHOOD_PAY_TO,
+            {
+                "chainId": settings.X402_ROBINHOOD_CHAIN_ID,
+                "name": "Global Dollar",
+                "version": "1",
+                "verifyingContract": settings.X402_ROBINHOOD_ASSET,
             },
         )
     if settings.X402_SOLANA_MAINNET_ENABLED and settings.X402_SOLANA_SIGNER_ADDRESS:
@@ -298,6 +313,11 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
         supported_networks.append({"network": "skale", "caip2": SKALE_MAINNET})
         if settings.X402_SKALE_SIGNER_ADDRESS:
             addresses["skale"] = settings.X402_SKALE_SIGNER_ADDRESS
+    if settings.X402_ROBINHOOD_EXACT_ENABLED:
+        add_kind("exact", ROBINHOOD_MAINNET)
+        supported_networks.append({"network": "robinhood", "caip2": ROBINHOOD_MAINNET})
+        if settings.X402_ROBINHOOD_SIGNER_ADDRESS:
+            addresses["robinhood"] = settings.X402_ROBINHOOD_SIGNER_ADDRESS
     if settings.X402_SOLANA_MAINNET_ENABLED:
         add_kind("exact", SOLANA_MAINNET_CAIP2)
         supported_networks.append({"network": "solana", "caip2": SOLANA_MAINNET_CAIP2})
@@ -322,7 +342,7 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
             "description": "Production settlement and verification service for Ace Data Cloud x402 payments.",
             "supportedKinds": supported_kinds,
             "supportedNetworks": supported_networks,
-            "supportedCurrencies": ["USDC"],
+            "supportedCurrencies": ["USDC"] + (["USDG"] if settings.X402_ROBINHOOD_EXACT_ENABLED else []),
             "endpoints": {
                 "supported": f"{facilitator_url}/supported",
                 "verify": f"{facilitator_url}/verify",
