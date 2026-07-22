@@ -67,6 +67,9 @@ class DiscoveryProxyTests(TestCase):
         X402_SKALE_ASSET="0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
         X402_SKALE_PAY_TO="0x1111111111111111111111111111111111111111",
         X402_SKALE_EXACT_ENABLED=True,
+        X402_ROBINHOOD_ASSET="0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        X402_ROBINHOOD_PAY_TO="0x1111111111111111111111111111111111111111",
+        X402_ROBINHOOD_EXACT_ENABLED=True,
         X402_SOLANA_ASSET="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         X402_SOLANA_PAY_TO="5iVXFrYaYWX2GUTbkQj8mDBoBhAX8bneYigS2LJTia43",
         X402_SOLANA_SIGNER_ADDRESS="3SPm6qbgsDkj24MuR8Ss4sH97fziqyCiqFKDyeVU2igq",
@@ -85,15 +88,23 @@ class DiscoveryProxyTests(TestCase):
         self.assertEqual(data["items"][0]["resource"], resources[1])
         self.assertEqual(data["items"][0]["type"], "http")
         self.assertEqual(data["items"][0]["x402Version"], 2)
+        accepts = data["items"][0]["accepts"]
         self.assertEqual(
-            {(item["scheme"], item["network"]) for item in data["items"][0]["accepts"]},
+            {(item["scheme"], item["network"]) for item in accepts},
             {
                 ("exact", "eip155:8453"),
                 ("upto", "eip155:8453"),
                 ("exact", "eip155:1187947933"),
+                ("exact", "eip155:4663"),
                 ("exact", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
             },
         )
+        # USDG (Global Dollar) has no version() getter; the EIP-712 domain must be
+        # advertised explicitly so clients sign against the right domain separator.
+        robinhood = next(item for item in accepts if item["network"] == "eip155:4663")
+        self.assertEqual(robinhood["extra"]["name"], "Global Dollar")
+        self.assertEqual(robinhood["extra"]["version"], "1")
+        self.assertEqual(robinhood["extra"]["chainId"], 4663)
 
     @override_settings(
         X402_DISCOVERY_URL="https://facilitator.acedata.cloud/discovery/resources",

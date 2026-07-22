@@ -12,6 +12,7 @@ from x402.schemas import PaymentPayload, PaymentRequirements
 
 from x402f.official import (
     BASE_MAINNET,
+    ROBINHOOD_MAINNET,
     SKALE_MAINNET,
     build_configured_facilitator,
     build_configured_registry,
@@ -191,6 +192,7 @@ def test_official_registry_supports_evm_exact_upto_and_svm_exact() -> None:
     X402_BASE_EXACT_ENABLED=True,
     X402_BASE_UPTO_ENABLED=True,
     X402_SKALE_EXACT_ENABLED=True,
+    X402_ROBINHOOD_EXACT_ENABLED=True,
     X402_SOLANA_MAINNET_ENABLED=True,
     X402_SOLANA_DEVNET_ENABLED=True,
 )
@@ -210,6 +212,7 @@ def test_configured_registry_registers_every_enabled_official_kind(evm_builder, 
         ("exact", BASE_MAINNET),
         ("upto", BASE_MAINNET),
         ("exact", SKALE_MAINNET),
+        ("exact", ROBINHOOD_MAINNET),
         ("exact", SOLANA_MAINNET_CAIP2),
         ("exact", SOLANA_DEVNET_CAIP2),
     }
