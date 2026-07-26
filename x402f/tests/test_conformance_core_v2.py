@@ -21,7 +21,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 MANIFEST = (
@@ -94,9 +94,24 @@ class ConformanceManifestTests(TestCase):
         )
 
 
+# A deterministic Base-only signer config so /supported returns a healthy V2
+# response regardless of the runtime environment. CI has no signer configured
+# (X402_BASE_SIGNER_ADDRESS defaults to ""), which would otherwise make
+# /supported return 503 "Facilitator is not configured" — that measures the env,
+# not conformance. Pinning the config here tests the response *shape*.
+@override_settings(
+    X402_BASE_EXACT_ENABLED=True,
+    X402_BASE_UPTO_ENABLED=False,
+    X402_BASE_NETWORK="eip155:8453",
+    X402_BASE_SIGNER_ADDRESS="0x000000000000000000000000000000000000dEaD",
+    X402_SKALE_EXACT_ENABLED=False,
+    X402_ROBINHOOD_EXACT_ENABLED=False,
+    X402_SOLANA_MAINNET_ENABLED=False,
+)
 class SupportedConformanceTests(TestCase):
     def test_supported_endpoint_passes_all_14_static_cases(self) -> None:
         response = self.client.get(reverse("x402:supported"))
+        assert response.status_code == 200, f"/supported not configured in test env: {response.content!r}"
         assert response["Content-Type"].split(";")[0] == "application/json"
         body = response.json()
         failures = [
