@@ -1,0 +1,2428 @@
+{
+  "profile": "core-v2",
+  "version": "2026-07-19.1",
+  "official_spec_commit": "67b1ba0a7abbd7907a28fa624670872532e0eae9",
+  "cases": [
+    {
+      "id": "CORE-001",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "f76bec175c7bcdc54e9f2553af1990bbcfca058d539c8f33eefdeb675ce9f444",
+      "evidence": [
+        "http"
+      ],
+      "check": "supported_status_200",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_status_200"
+      }
+    },
+    {
+      "id": "CORE-002",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "a1e7f575b85635d05d992ae8f3e5fb4d57609f32aa580882be1fc257a4e26f61",
+      "evidence": [
+        "content-type"
+      ],
+      "check": "supported_json_content_type",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_json_content_type"
+      }
+    },
+    {
+      "id": "CORE-003",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "9f10b1b8ae7e5b4b531a8ea80801252740abecc5861869799ed5fc2e53f59919",
+      "evidence": [
+        "schema"
+      ],
+      "check": "supported_body_object",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_body_object"
+      }
+    },
+    {
+      "id": "CORE-004",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "36a8b29498995d5284861262d5d62859e8865e895de6548b95e5485d712a261d",
+      "evidence": [
+        "schema"
+      ],
+      "check": "supported_kinds_array",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_kinds_array"
+      }
+    },
+    {
+      "id": "CORE-005",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "c61957dc523b079fc8f24c33f8f8067940279e70a91b4cb57c6ab5e252f7ef67",
+      "evidence": [
+        "capability"
+      ],
+      "check": "supported_nonempty",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_nonempty"
+      }
+    },
+    {
+      "id": "CORE-006",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "3f291e04b35d39b7b1ba4ec915e07b7394809337ce3971c3dc983d6de88ac513",
+      "evidence": [
+        "schema"
+      ],
+      "check": "supported_kind_object",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_kind_object"
+      }
+    },
+    {
+      "id": "CORE-007",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#version",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "48b8c78bd71668809ea932a8272e8dc9339f2fb0a1917b810fe962cded6ad23d",
+      "evidence": [
+        "version"
+      ],
+      "check": "supported_version_integer",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_version_integer"
+      }
+    },
+    {
+      "id": "CORE-008",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#scheme",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "95cce3a62a26010a6e3d06127572a8efba0175404d4da057f4824963831ad1f5",
+      "evidence": [
+        "scheme"
+      ],
+      "check": "supported_scheme_string",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_scheme_string"
+      }
+    },
+    {
+      "id": "CORE-009",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "schemes/exact",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "416a9ede47d61044aaf5eaca1ce91e856ebf24b0d20ab5c048fd226df10aac47",
+      "evidence": [
+        "scheme"
+      ],
+      "check": "supported_exact",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_exact"
+      }
+    },
+    {
+      "id": "CORE-010",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#network",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "1547347764e18c2b0f3227f9eb955d751317b979e9c721e2dc6efc121804d0d4",
+      "evidence": [
+        "network"
+      ],
+      "check": "supported_network_string",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_network_string"
+      }
+    },
+    {
+      "id": "CORE-011",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#caip-2",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "50cccefecd97ff422af1d4c2c7e3c5da9cd697fc0f7dd175ed97a39ec0a56f1a",
+      "evidence": [
+        "network"
+      ],
+      "check": "supported_network_caip2",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_network_caip2"
+      }
+    },
+    {
+      "id": "CORE-012",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#caip-2",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "ec26545d0cf99c6d4837029781c750f4084bd8bb8034e666da09608481f6bbff",
+      "evidence": [
+        "network"
+      ],
+      "check": "supported_no_short_network",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_no_short_network"
+      }
+    },
+    {
+      "id": "CORE-013",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-supported",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "e7458be2baaa70e3f95e3d2b2d597a62e0f0382416aac770d92a91574d6fd1e0",
+      "evidence": [
+        "capability"
+      ],
+      "check": "supported_unique_kinds",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_unique_kinds"
+      }
+    },
+    {
+      "id": "CORE-014",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "security.md#secret-hygiene",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "071999adead26e8417e70182a8350c66448851fe210b99bce71f74d81d7345f9",
+      "evidence": [
+        "redaction"
+      ],
+      "check": "supported_no_secrets",
+      "fixture": {
+        "endpoint": "supported",
+        "check": "supported_no_secrets"
+      }
+    },
+    {
+      "id": "VERIFY-001",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "43d60f9dffc91d80d4c3fcff4ccf1892accc20392040ae771b7107e304b031cc",
+      "evidence": [
+        "http"
+      ],
+      "check": "verify_status_200",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_status_200",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-002",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "482da2cbab467772961dccb9256ada3499d26e1dd22293cdfd62f250348c9095",
+      "evidence": [
+        "content-type"
+      ],
+      "check": "verify_json_content_type",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_json_content_type",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-003",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "a52f319db75c9d2b9d49bc5bc58a85bcf532f4ab040938af031bf131022fc984",
+      "evidence": [
+        "schema"
+      ],
+      "check": "verify_body_object",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_body_object",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-004",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "1bf8b4bf43030526a9e5c852a8c2825ccf63d5a6a637a0c484f9601f0a344427",
+      "evidence": [
+        "schema"
+      ],
+      "check": "verify_is_valid_boolean",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_is_valid_boolean",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-005",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "b4d9b55ef40e04a9688d7ea2aa75d3a0ea3a5951d8a3841306bfde44550fbbd3",
+      "evidence": [
+        "validity"
+      ],
+      "check": "verify_valid_true",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_valid_true",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-006",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "1f19d3d874efd89856a565da081d35cb050b57c9d54b0a299fc34bae52f7de7d",
+      "evidence": [
+        "error"
+      ],
+      "check": "verify_reason_nullable",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_reason_nullable",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-007",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "7d7e479944eb4635af41f06ed850dcf226b899b936279490d8eb126438f89feb",
+      "evidence": [
+        "payer"
+      ],
+      "check": "verify_payer_string",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_payer_string",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-008",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "schemes/exact/evm#payer",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "f595becbfc5fdfcde2258d71e1fad67008ddc5cb3b2eb1ee54db370658e819f1",
+      "evidence": [
+        "payer"
+      ],
+      "check": "verify_payer_address",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_payer_address",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-009",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "019430e723c7e3eb906c77b8c248d5a29a6669faf73d857ff0f05b5321242953",
+      "evidence": [
+        "schema"
+      ],
+      "check": "verify_no_transaction",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_no_transaction",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "VERIFY-010",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "security.md#secret-hygiene",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "64fc8057acd3477cf8645b55890175c43ab8d0dc9a7661aac1eb4fa637b12304",
+      "evidence": [
+        "redaction"
+      ],
+      "check": "verify_no_secrets",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "verify_no_secrets",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-001",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "223f24afeadf686fb15aa9b0c514ed48d7d028fb8bfdf939a0c59396c644d94c",
+      "evidence": [
+        "http"
+      ],
+      "check": "settle_status_200",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_status_200",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-002",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "512c3d3d0cd0f4430e2eb5e381e5f011ac159edbb538cacad16bf70223efaca5",
+      "evidence": [
+        "content-type"
+      ],
+      "check": "settle_json_content_type",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_json_content_type",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-003",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "364cf40c5aaece7953e873b48c06635a1a2252c4ba0a3612f49c745927217e24",
+      "evidence": [
+        "schema"
+      ],
+      "check": "settle_body_object",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_body_object",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-004",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "fbe30f3b78582c92cbb0c8ce4c21d902bc721e7524b4cd9555a585d8030fa747",
+      "evidence": [
+        "schema"
+      ],
+      "check": "settle_success_boolean",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_success_boolean",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-005",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "3e504a78d7c49dedf718270b041d13fd66533a5eaa62ceb36a2eccc62e7e07d6",
+      "evidence": [
+        "success"
+      ],
+      "check": "settle_success_true",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_success_true",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-006",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "75551ebaa70597ceac9682f439069ea8895eda2a355d5cffd849e895380f0de9",
+      "evidence": [
+        "transaction"
+      ],
+      "check": "settle_transaction_hash",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_transaction_hash",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-007",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#caip-2",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "7ebf1abc736719fbd2316886964873226edf40cfa3631cfd3c05566dad7ce391",
+      "evidence": [
+        "network"
+      ],
+      "check": "settle_network_caip2",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_network_caip2",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-008",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#settle-response",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "102c8513dd0a65ed2090403549412ece2bd662add75438915ff5774c4fa1960f",
+      "evidence": [
+        "network"
+      ],
+      "check": "settle_network_matches",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_network_matches",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-009",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#amount",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "9a61f78c472f1de548446b6a1b1de66b85cc454dac7fe29581515be397eac72b",
+      "evidence": [
+        "amount"
+      ],
+      "check": "settle_amount_atomic",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_amount_atomic",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "SETTLE-010",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#payer",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "868fd2162c8224754222c3833cb0a56f8c0df8d5c562107e2bc7f34b5ecbddf3",
+      "evidence": [
+        "payer"
+      ],
+      "check": "settle_payer_address",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "settle_payer_address",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        }
+      }
+    },
+    {
+      "id": "NEG-001",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#version",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "c4e6482e0a7c5b4a868f9282276f949e0ad0e6c8e6a16fd79a85d93411f6987f",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_missing_version",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_missing_version",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          }
+        },
+        "expectedInvalidReason": "invalid_x402_version"
+      }
+    },
+    {
+      "id": "NEG-002",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#version",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "8013bfbc487d78ee7eb04c7f2415e73e7360a0e29c04d8e7e0c6501e966ccaa6",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_wrong_version",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_wrong_version",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 1
+        },
+        "expectedInvalidReason": "invalid_x402_version"
+      }
+    },
+    {
+      "id": "NEG-003",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "812f6e4cf6548ee0fb4840e4f21a0f70cef94e498a5ec10a74783692e584c207",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_missing_payload",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_missing_payload",
+        "request": {
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "missing_payment_fields"
+      }
+    },
+    {
+      "id": "NEG-004",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "c03bd45cef2f5b84fb97dcebb6d7a86246f1c99db0e74343bf49c2b40a8aa072",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_missing_requirements",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_missing_requirements",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "missing_payment_fields"
+      }
+    },
+    {
+      "id": "NEG-005",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#scheme",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "3e15c69d33eb42db6238fb58d79956b5e3765e60ea7927efc6d3ffc153a4af85",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_unknown_scheme",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_unknown_scheme",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "mystery"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "mystery"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "unsupported_scheme"
+      }
+    },
+    {
+      "id": "NEG-006",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#caip-2",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "f1ff7a8ea09cffdbb6ba5c1c74328a164108361acada9ad4969bd3ef681a5a79",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_short_network",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_short_network",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "base",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "base",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "unsupported_network"
+      }
+    },
+    {
+      "id": "NEG-007",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#network",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "c16235aecfc841238097216019392f92cc7c909a34fafe844adb949ef696f0c3",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_unknown_network",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_unknown_network",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:999999",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:999999",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "unsupported_network"
+      }
+    },
+    {
+      "id": "NEG-008",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#accepted",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "b967405f00c5d99f80bc5522c307a60aeda412463d74a212d116485aeb39852c",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_accepted_mismatch",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_accepted_mismatch",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "999",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "accepted_mismatch"
+      }
+    },
+    {
+      "id": "NEG-009",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "schemes/exact/evm#amount",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "d95a37d13cf2de6ceb48b9a302f01b18a1121d7f30632036a30475600d036e61",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_amount_mismatch",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_amount_mismatch",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "999"
+              },
+              "signature": "0x463a1eeb1e63d00e01dd81663b0f2cf0c0c1881021332bcf250b64d2b70c8ca327ae96205077fac05a9682aad9169cdecc14c23b1f4a30c881c9b5a3e8bb95f91b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "amount_mismatch"
+        ],
+        "expectedInvalidReason": "amount_mismatch"
+      },
+      "fixture_sha256": "a4f5702bb7f340b9f525e59edae5b8b79c184a4871687561189d40ba64757b35"
+    },
+    {
+      "id": "NEG-010",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "schemes/exact/evm#pay-to",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "6878a22d0e91b403e345e47c7a8bad697efef32b1b4db35ce22f1d694008eccb",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_pay_to_mismatch",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_pay_to_mismatch",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x4444444444444444444444444444444444444444",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "0xd27b7d526c6e5b953a31945cf11d3cba8a23efb74d6457b76bc473f4a670c84e4604535ce1fbb3dbe097731d28ab8f087013fb925d20a89ff7715c2483f20bf31b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "pay_to_mismatch"
+        ],
+        "expectedInvalidReason": "pay_to_mismatch"
+      },
+      "fixture_sha256": "60a0d67a07d508155111768d417a5844dc9c811c234181851fe863a87678a464"
+    },
+    {
+      "id": "NEG-011",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "schemes/exact/evm#nonce",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "2839b1a90a7c55c4e4dbc79f845e7c42d21d43e9574e2e459a18ef4afdd78c1a",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_invalid_nonce",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_invalid_nonce",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x01",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "invalid_nonce",
+          "invalid_signature"
+        ]
+      }
+    },
+    {
+      "id": "NEG-012",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "schemes/exact/evm#signature",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "6dd0cca9c7e534a2de2316cf5641b213497167b5d3804801655f55df477393c1",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_invalid_signature",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_invalid_signature",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "0x11"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "invalid_signature"
+      }
+    },
+    {
+      "id": "NEG-013",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#amount",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "7ad582fc0c897b4f83ce0a2367d85842f5c6176f75318114d0cd278a3a75395b",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_negative_amount",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_negative_amount",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "-1",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "-1"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "-1",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "invalid_amount",
+          "accepted_mismatch",
+          "invalid_signature"
+        ]
+      }
+    },
+    {
+      "id": "NEG-014",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#amount",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "a76e09feee78d09a07b78e6d340d99d9aff0bc3bae30b50ad22826fe00ee3a0b",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_scientific_amount",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_scientific_amount",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1e3",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1e3"
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1e3",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "invalid_amount",
+          "accepted_mismatch",
+          "invalid_signature"
+        ]
+      }
+    },
+    {
+      "id": "NEG-015",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#amount",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "572e54b4576edccee09d83948926e6e5ab02b37d865dc4093375703ae0b1b763",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_float_amount",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_float_amount",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": 1000.0,
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": 1000.0
+              },
+              "signature": "f346194f1dad5e59045c39250aea9b771de691ac0bf0187a2a3b58f5898735037dd367dfbf7efef1367d72e8eb3b48e760a451967f11763fa92a99b7e08a6b311b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": 1000.0,
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "invalid_amount",
+          "accepted_mismatch",
+          "invalid_signature"
+        ]
+      }
+    },
+    {
+      "id": "NEG-016",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#verify",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "7822973dd379aaf2d5a834af8f0f9e2a40bf4eb123fd45bfaa8af70a79ae160f",
+      "evidence": [
+        "negative"
+      ],
+      "check": "reject_null_body",
+      "fixture": {
+        "endpoint": "verify",
+        "check": "reject_null_body",
+        "request": {},
+        "expectedInvalidReason": "invalid_request"
+      }
+    },
+    {
+      "id": "SNEG-001",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-settle",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "bd5c3996eec2a8d566ec7fc8cf217ef09e6c111a77ef1485566f3c2844264f2d",
+      "evidence": [
+        "negative",
+        "settle"
+      ],
+      "check": "reject_pay_to_mismatch",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "reject_pay_to_mismatch",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x4444444444444444444444444444444444444444",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "0xd27b7d526c6e5b953a31945cf11d3cba8a23efb74d6457b76bc473f4a670c84e4604535ce1fbb3dbe097731d28ab8f087013fb925d20a89ff7715c2483f20bf31b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "pay_to_mismatch"
+        ],
+        "expectedInvalidReason": "pay_to_mismatch"
+      },
+      "fixture_sha256": "b666ff2719044794c084b0a5ab2b313d9da6aa39d45ff19a992afb782db93df3"
+    },
+    {
+      "id": "SNEG-002",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-settle",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "ac4ca6cf2105b67ba579b5fd2f5ab80008e405c739c5c2303e7434d5022f7c35",
+      "evidence": [
+        "negative",
+        "settle"
+      ],
+      "check": "reject_invalid_signature",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "reject_invalid_signature",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "1000"
+              },
+              "signature": "0x11"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReason": "invalid_signature"
+      }
+    },
+    {
+      "id": "SNEG-003",
+      "profile": "core-v2",
+      "mandatory": true,
+      "spec_ref": "x402-specification-v2.md#facilitator-settle",
+      "oracle": "frozen-vector",
+      "fixture_sha256": "7753b8f7773f9a7bbae9f3654a371af6b4ed19479ee99314dfe6d23269ecf5a7",
+      "evidence": [
+        "negative",
+        "settle"
+      ],
+      "check": "reject_amount_mismatch",
+      "fixture": {
+        "endpoint": "settle",
+        "check": "reject_amount_mismatch",
+        "request": {
+          "paymentPayload": {
+            "accepted": {
+              "amount": "1000",
+              "asset": "0x2222222222222222222222222222222222222222",
+              "extra": {
+                "name": "USD Coin",
+                "version": "2"
+              },
+              "maxTimeoutSeconds": 60,
+              "network": "eip155:84532",
+              "payTo": "0x1111111111111111111111111111111111111111",
+              "scheme": "exact"
+            },
+            "payload": {
+              "authorization": {
+                "from": "0x1a642f0E3c3aF545E7AcBD38b07251B3990914F1",
+                "nonce": "0x0101010101010101010101010101010101010101010101010101010101010101",
+                "to": "0x1111111111111111111111111111111111111111",
+                "validAfter": "0",
+                "validBefore": "4102444800",
+                "value": "999"
+              },
+              "signature": "0x463a1eeb1e63d00e01dd81663b0f2cf0c0c1881021332bcf250b64d2b70c8ca327ae96205077fac05a9682aad9169cdecc14c23b1f4a30c881c9b5a3e8bb95f91b"
+            },
+            "x402Version": 2
+          },
+          "paymentRequirements": {
+            "amount": "1000",
+            "asset": "0x2222222222222222222222222222222222222222",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 60,
+            "network": "eip155:84532",
+            "payTo": "0x1111111111111111111111111111111111111111",
+            "scheme": "exact"
+          },
+          "x402Version": 2
+        },
+        "expectedInvalidReasons": [
+          "amount_mismatch"
+        ],
+        "expectedInvalidReason": "amount_mismatch"
+      },
+      "fixture_sha256": "eb036b8d9e80776c7ca1d220eb336bdb2f97acf2bb45c86bb01fd2f54da65594"
+    }
+  ]
+}
