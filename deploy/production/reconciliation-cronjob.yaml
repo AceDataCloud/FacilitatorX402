@@ -10,8 +10,10 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 50
-      backoffLimit: 1
+      # Room for one in-Job retry so a brief cluster DNS blip self-heals
+      # instead of leaving a failed Job behind.
+      activeDeadlineSeconds: 120
+      backoffLimit: 2
       template:
         metadata:
           labels:

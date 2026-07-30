@@ -3,11 +3,12 @@
 from django.contrib import admin
 from django.urls import include, path, re_path
 
-from core.views import discovery_list, discovery_resources, health, home, well_known_x402
+from core.views import discovery_list, discovery_resources, health, health_db, home, well_known_x402
 
 urlpatterns = [
     path("", home, name="home"),
     path("healthz", health, name="healthz"),
+    path("healthz/db", health_db, name="healthz-db"),
     re_path(r"^\.well-known/x402/?$", well_known_x402, name="well-known-x402"),
     path("discovery/resources", discovery_resources, name="x402-discovery-resources"),
     path("list", discovery_list, name="x402-discovery-list"),

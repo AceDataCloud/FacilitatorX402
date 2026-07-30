@@ -19,7 +19,9 @@ It is a testnet compatibility option, not a production rail.
 
 ## API
 
-- `GET /healthz`: liveness and readiness probe.
+- `GET /healthz`: liveness probe. Process-only, never touches the database.
+- `GET /healthz/db`: readiness probe. Returns 503 when the database is
+  unreachable so an unhealthy replica leaves rotation without being restarted.
 - `GET /supported`: official facilitator kinds, extensions, and signer
   addresses.
 - `POST /verify`: validate and reserve a v2 payment authorization.

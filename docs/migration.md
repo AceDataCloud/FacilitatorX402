@@ -332,9 +332,10 @@ The production runbook is implemented by `deploy/run.sh`.
    probe.
 10. Apply `deploy/production/reconciliation-cronjob.yaml`, create a one-shot Job
   from it, and require that reconciliation smoke Job to complete.
-11. Validate `/healthz`, `/supported`, `/.well-known/x402`, and discovery.
-  Production discovery must return 43 independently sourced resources, and
-  each item must advertise the four enabled CAIP-2 scheme/network pairs.
+11. Validate `/healthz`, `/healthz/db`, `/supported`, `/.well-known/x402`, and
+  discovery. Production discovery must return 43 independently sourced
+  resources, and each item must advertise the four enabled CAIP-2
+  scheme/network pairs.
 12. Run one controlled payment per enabled rail and verify the chain receipt,
     database state, and replay behavior.
 13. Re-enable Gateway traffic gradually and monitor failures, pending
