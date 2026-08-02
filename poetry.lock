@@ -2652,14 +2652,14 @@ doc = ["sphinx"]
 
 [[package]]
 name = "tencentcloud-sdk-python"
-version = "3.1.140"
+version = "3.1.145"
 description = "Tencent Cloud SDK for Python"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "tencentcloud_sdk_python-3.1.140-py2.py3-none-any.whl", hash = "sha256:066e4e0a28ed62a01eaecd450c2ff2cc39644dd6c55032bd7490ab56ce468bc0"},
-    {file = "tencentcloud_sdk_python-3.1.140.tar.gz", hash = "sha256:0aec652e0e3cb1434870439f883d478bc8f2c013d94508ceb27c7014b75d3af1"},
+    {file = "tencentcloud_sdk_python-3.1.145-py2.py3-none-any.whl", hash = "sha256:9f41caaf43afea53e69ab6502e60420f81d3c729b617f691e52c7bb8ae1147e6"},
+    {file = "tencentcloud_sdk_python-3.1.145.tar.gz", hash = "sha256:6cebff4fa266041d1574d4b27edc587e0688d2b7b146b114606f7a99960e23db"},
 ]
 
 [package.dependencies]
@@ -2827,14 +2827,14 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "uvicorn"
-version = "0.51.0"
+version = "0.52.0"
 description = "The lightning-fast ASGI server."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "uvicorn-0.51.0-py3-none-any.whl", hash = "sha256:5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b"},
-    {file = "uvicorn-0.51.0.tar.gz", hash = "sha256:f6f4b69b657c312f516dd2d268ab9ae6f254b11e4bac504f37b2ab58b24dd0b0"},
+    {file = "uvicorn-0.52.0-py3-none-any.whl", hash = "sha256:3d887809810b89ed33501bcf0a9aba469b06ecd608158efce04bd6b48d8c9b08"},
+    {file = "uvicorn-0.52.0.tar.gz", hash = "sha256:ca8876ad6c1983f394157c168b39d52f6dd56dabf5602fa0982751cffc2293ae"},
 ]
 
 [package.dependencies]
@@ -2976,14 +2976,14 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 
 [[package]]
 name = "x402"
-version = "2.16.0"
+version = "2.17.0"
 description = "x402 Payment Protocol SDK for Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "x402-2.16.0-py3-none-any.whl", hash = "sha256:8d536571782111dd8781cd4cf36f3b88e4f0b5d17c39251a17b8e655313a89fb"},
-    {file = "x402-2.16.0.tar.gz", hash = "sha256:5656f8b3620105816bee4d2af73600b690b11fb77f0927d80694605d14ff483b"},
+    {file = "x402-2.17.0-py3-none-any.whl", hash = "sha256:871f5b9d316274e287ace675c0ce977c59c950d6bfa74570cb9809afbdfc8872"},
+    {file = "x402-2.17.0.tar.gz", hash = "sha256:e6055a87c325e73a07952c5f359a03318f85802918db38130e200f4a9f356a38"},
 ]
 
 [package.dependencies]
@@ -3154,4 +3154,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.12"
-content-hash = "0214986c742df30d40c66cbeeb22183a1cb8360e92e52e276f5990d1cdb895c8"
+content-hash = "33dffdc2333fd3816729a9104351cb70307b789bb63423bf9522cc7a57d43469"
