@@ -1,5 +1,7 @@
 import base64
+import re
 from collections.abc import Callable
+from typing import Any
 
 from hexbytes import HexBytes
 from solders.signature import Signature
@@ -11,6 +13,25 @@ from x402.mechanisms.evm.data_suffix import append_data_suffix
 from x402.mechanisms.evm.signer import TransactionReceipt
 from x402.mechanisms.evm.signers import FacilitatorWeb3Signer
 from x402.mechanisms.svm.signers import FacilitatorKeypairSigner
+
+_HEX_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def checksum_address_args(value: Any) -> Any:
+    """Checksum any 20-byte hex string so web3.py's ABI encoder accepts it.
+
+    x402 2.16.0 only checksums the *contract* address, never the call arguments, so a
+    lowercase payer (`authorization.from`) makes web3.py raise InvalidAddress. That
+    surfaces as a bogus simulation/signature failure instead of a real verdict. The
+    legacy facilitator normalized addresses itself; the official SDK has no equivalent.
+    """
+    if isinstance(value, str) and _HEX_ADDRESS.match(value):
+        return Web3.to_checksum_address(value)
+    if isinstance(value, tuple):
+        return tuple(checksum_address_args(item) for item in value)
+    if isinstance(value, list):
+        return [checksum_address_args(item) for item in value]
+    return value
 
 
 class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
@@ -33,6 +54,20 @@ class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
         if self._w3.eth.chain_id != self._chain_id:
             raise RuntimeError(f"Base RPC chain ID mismatch: expected {self._chain_id}")
 
+    def read_contract(
+        self,
+        address: str,
+        abi: list[dict],
+        function_name: str,
+        *args: Any,
+    ) -> Any:
+        return super().read_contract(
+            address,
+            abi,
+            function_name,
+            *(checksum_address_args(arg) for arg in args),
+        )
+
     def write_contract(
         self,
         address: str,
@@ -41,6 +76,7 @@ class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
         *args,
         data_suffix: str | None = None,
     ) -> str:
+        args = tuple(checksum_address_args(arg) for arg in args)
         contract = self._w3.eth.contract(address=Web3.to_checksum_address(address), abi=abi)
         function = getattr(contract.functions, function_name)(*args)
         transaction = function.build_transaction(
