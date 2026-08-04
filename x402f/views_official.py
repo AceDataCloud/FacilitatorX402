@@ -133,6 +133,25 @@ def _invalid_verify(reason: str) -> Response:
     return _response(VerifyResponse(is_valid=False, invalid_reason=reason))
 
 
+def _payer_has_code(network: str, payer: str) -> str:
+    """Report whether the payer is an EOA, a contract wallet, or an EIP-7702 delegation.
+
+    This is the first thing you need when a signature is rejected, because the SDK
+    routes contract/delegated accounts through strict EIP-1271 with no ECDSA fallback.
+    Diagnostics must never change the verdict, so any failure degrades to "unknown".
+    """
+    if not payer or network.startswith("solana:"):
+        return "n/a"
+    try:
+        signer = _configured(network).signer_for(network)
+        code = signer.get_code(payer)
+    except Exception:
+        return "unknown"
+    if not code:
+        return "eoa"
+    return "eip7702" if bytes(code[:3]) == b"\xef\x01\x00" else f"contract({len(code)}b)"
+
+
 def _failed_settle(
     reason: str,
     transaction_hash: str = "",
@@ -358,6 +377,26 @@ class X402VerifyView(APIView):
             logger.error("official x402 verify failed: {}", exc)
             return _invalid_verify("Facilitator verification failed.")
         if not result.is_valid:
+            # Rejections were previously returned without a trace, so a production
+            # verify failure left nothing to debug from: the HTTP response drops
+            # invalid_message and the payload is never persisted on this path.
+            logger.warning(
+                "official x402 verify rejected: reason={} message={} payer={} network={} "
+                "scheme={} asset={} amount={} valid_after={} valid_before={} nonce={} "
+                "signature_len={} has_code={}",
+                result.invalid_reason,
+                result.invalid_message,
+                result.payer or identity.payer,
+                requirements.network,
+                requirements.scheme,
+                requirements.asset,
+                requirements.amount,
+                identity.valid_after,
+                identity.valid_before,
+                identity.nonce,
+                len(str(serialized_payload.get("payload", {}).get("signature") or "")),
+                _payer_has_code(str(requirements.network), result.payer or identity.payer),
+            )
             return _response(result)
 
         try:
