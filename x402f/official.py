@@ -7,11 +7,11 @@ from x402.mechanisms.evm.exact import ExactEvmFacilitatorScheme
 from x402.mechanisms.evm.signer import FacilitatorEvmSigner
 from x402.mechanisms.evm.upto import UptoEvmFacilitatorScheme
 from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
-from x402.mechanisms.svm.exact import ExactSvmFacilitatorScheme
 from x402.mechanisms.svm.signer import FacilitatorSvmSigner
 from x402.schemas import SupportedKind, SupportedResponse
 
 from x402f.official_signer import DurableFacilitatorSvmSigner, DurableFacilitatorWeb3Signer
+from x402f.svm_exact import OutcomeExactSvmFacilitatorScheme
 
 BASE_MAINNET = "eip155:8453"
 BASE_MAINNET_CHAIN_ID = 8453
@@ -58,7 +58,7 @@ def register_svm_exact(
     signer: FacilitatorSvmSigner,
     networks: list[str],
 ) -> None:
-    facilitator.register(networks, ExactSvmFacilitatorScheme(signer))
+    facilitator.register(networks, OutcomeExactSvmFacilitatorScheme(signer))
 
 
 def build_facilitator(
