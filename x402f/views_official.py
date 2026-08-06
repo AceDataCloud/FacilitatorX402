@@ -458,6 +458,10 @@ class X402SettleView(APIView):
         except (ValidationError, ValueError) as exc:
             return _failed_settle(str(exc))
 
+        settlement_id = request.headers.get("X-Idempotency-Key", "").strip()
+        if len(settlement_id) > 128:
+            return _failed_settle("X-Idempotency-Key is too long.")
+
         try:
             record = X402Authorization.objects.get(nonce=identity.nonce)
         except X402Authorization.DoesNotExist:
@@ -475,8 +479,11 @@ class X402SettleView(APIView):
         network = str(incoming_requirements.get("network"))
         if not requirements_match or incoming_payload != record.payment_payload:
             return _failed_settle("Payment payload or requirements do not match verification.", network=network)
+        same_operation = bool(settlement_id) and settlement_id == record.verification_id
+        if settlement_id and not same_operation:
+            return _failed_settle("Settlement idempotency key does not match verification.", network=network)
         if record.status == X402Authorization.Status.SETTLED:
-            if network.startswith("solana:"):
+            if network.startswith("solana:") and not same_operation:
                 return _failed_settle(
                     ERR_DUPLICATE_SETTLEMENT,
                     network=network,

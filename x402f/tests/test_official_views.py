@@ -107,12 +107,15 @@ class OfficialViewTests(TestCase):
         self.settings_override.enable()
         self.addCleanup(self.settings_override.disable)
 
-    def _settle(self, body):  # noqa: ANN001, ANN201
+    def _settle(self, body, idempotency_key=""):  # noqa: ANN001, ANN201
+        headers = {"HTTP_X_SETTLEMENT_TOKEN": "internal-secret"}
+        if idempotency_key:
+            headers["HTTP_X_IDEMPOTENCY_KEY"] = idempotency_key
         return self.client.post(
             reverse("x402:settle"),
             data=json.dumps(body),
             content_type="application/json",
-            HTTP_X_SETTLEMENT_TOKEN="internal-secret",
+            **headers,
         )
 
     @override_settings(X402_BASE_NETWORK="eip155:84532")
@@ -454,6 +457,48 @@ class OfficialViewTests(TestCase):
         self.assertEqual(record.status, X402Authorization.Status.SETTLED)
         self.assertEqual(factory.call_count, 2)
 
+    def test_settled_solana_payment_replays_same_operation(self) -> None:
+        body = self.body
+        network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        body["paymentPayload"]["accepted"]["network"] = network
+        body["paymentRequirements"]["network"] = network
+        body["paymentRequirements"]["asset"] = "mint"
+        body["paymentRequirements"]["payTo"] = "payee"
+        body["paymentPayload"]["payload"] = {"transaction": "base64-transaction"}
+        X402Authorization.objects.create(
+            nonce=f"svm:{network}:message-hash",
+            verification_id="attempt-1",
+            payer="payer-address",
+            pay_to="payee",
+            value="1",
+            valid_after=timezone.now(),
+            valid_before=timezone.now() + timedelta(minutes=1),
+            signature="payload-hash",
+            payment_requirements=body["paymentRequirements"],
+            payment_payload=body["paymentPayload"],
+            scheme="exact",
+            status=X402Authorization.Status.SETTLED,
+            transaction_hash="solana-signature",
+            settled_amount="1",
+        )
+
+        with (
+            override_settings(
+                X402_SOLANA_MAINNET_ENABLED=True,
+                X402_SOLANA_ASSET="mint",
+                X402_SOLANA_PAY_TO="payee",
+            ),
+            patch("x402f.views_official.decode_transaction_from_payload", return_value=SimpleNamespace()),
+            patch("x402f.views_official.transaction_message_hash", return_value="message-hash"),
+            patch("x402f.views_official.get_token_payer_from_transaction", return_value="payer-address"),
+            patch("x402f.views_official.hashlib.sha256") as sha256,
+        ):
+            sha256.return_value.hexdigest.return_value = "payload-hash"
+            response = self._settle(body, "attempt-1")
+
+        self.assertTrue(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], "solana-signature")
+
     def test_settled_solana_payment_rejects_duplicate_settlement(self) -> None:
         body = self.body
         network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
@@ -495,6 +540,26 @@ class OfficialViewTests(TestCase):
         self.assertFalse(response.json()["success"])
         self.assertEqual(response.json()["errorReason"], "duplicate_settlement")
         self.assertEqual(response.json()["transaction"], "")
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_settle_rejects_mismatched_operation_id(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        body = self.body
+        verify = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="attempt-1",
+        )
+        self.assertTrue(verify.json()["isValid"])
+
+        response = self._settle(body, "attempt-2")
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(
+            response.json()["errorReason"],
+            "Settlement idempotency key does not match verification.",
+        )
 
     @patch("x402f.views_official.build_configured_facilitator")
     def test_settle_rejects_payload_changed_after_verify(self, factory) -> None:
