@@ -155,6 +155,23 @@ def test_accepts_observed_phantom_eight_instruction_layout() -> None:
     assert signer.simulated is True
 
 
+def test_accepts_phantom_lighthouse_reference_to_sponsored_fee_payer() -> None:
+    sponsor = Keypair()
+    payer = Keypair()
+    payload, requirements, signer = payment(
+        authority=payer,
+        fee_payer=sponsor,
+        extras_before=[lighthouse(sponsor.pubkey())],
+        extras_after=[memo()],
+    )
+
+    result = verify(payload, requirements, signer)
+
+    assert result.is_valid is True
+    assert result.payer == str(payer.pubkey())
+    assert signer.simulated is True
+
+
 def test_accepts_wallet_instruction_without_positional_assumptions() -> None:
     payer = Keypair()
     wallet_instruction = Instruction(

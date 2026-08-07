@@ -18,6 +18,7 @@ from x402.mechanisms.svm.constants import (
     ERR_SIMULATION_FAILED,
     ERR_TRANSACTION_DECODE_FAILED,
     ERR_UNSUPPORTED_SCHEME,
+    LIGHTHOUSE_PROGRAM_ADDRESS,
     MAX_COMPUTE_UNIT_PRICE_MICROLAMPORTS,
     MEMO_PROGRAM_ADDRESS,
     SCHEME_EXACT,
@@ -84,6 +85,7 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
             Pubkey.from_string(TOKEN_PROGRAM_ADDRESS),
             Pubkey.from_string(TOKEN_2022_PROGRAM_ADDRESS),
         }
+        lighthouse_program = Pubkey.from_string(LIGHTHOUSE_PROGRAM_ADDRESS)
         memo_program = Pubkey.from_string(MEMO_PROGRAM_ADDRESS)
         limit_values: list[int] = []
         price_values: list[int] = []
@@ -91,7 +93,9 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
         memo_instructions = []
 
         for instruction, program in zip(instructions, programs, strict=True):
-            if 0 in instruction.accounts:
+            # Phantom's Lighthouse safety instructions may inspect the sponsored
+            # fee payer. Every other program remains forbidden from referencing it.
+            if 0 in instruction.accounts and program != lighthouse_program:
                 return self._invalid_layout(ERR_FEE_PAYER_IN_INSTRUCTION, programs)
 
             data = bytes(instruction.data)
