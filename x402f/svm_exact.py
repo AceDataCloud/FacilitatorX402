@@ -38,6 +38,15 @@ ERR_AMOUNT_MISMATCH = "invalid_exact_svm_payload_amount_mismatch"
 ERR_FEE_PAYER_ACCOUNT_MISMATCH = "invalid_exact_svm_payload_fee_payer_account_mismatch"
 ERR_FEE_PAYER_IN_INSTRUCTION = "invalid_exact_svm_payload_fee_payer_in_instruction"
 ERR_SIGNER_SET_MISMATCH = "invalid_exact_svm_payload_signer_set_mismatch"
+PHANTOM_FEE_PAYER_ASSERTION = bytes.fromhex("06040203000001000000000000000000")
+
+
+def _is_safe_lighthouse_fee_payer_assertion(instruction, program: Pubkey, lighthouse_program: Pubkey) -> bool:
+    return (
+        program == lighthouse_program
+        and list(instruction.accounts) == [0]
+        and bytes(instruction.data) == PHANTOM_FEE_PAYER_ASSERTION
+    )
 
 
 class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
@@ -93,9 +102,9 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
         memo_instructions = []
 
         for instruction, program in zip(instructions, programs, strict=True):
-            # Phantom's Lighthouse safety instructions may inspect the sponsored
-            # fee payer. Every other program remains forbidden from referencing it.
-            if 0 in instruction.accounts and program != lighthouse_program:
+            if 0 in instruction.accounts and not _is_safe_lighthouse_fee_payer_assertion(
+                instruction, program, lighthouse_program
+            ):
                 return self._invalid_layout(ERR_FEE_PAYER_IN_INSTRUCTION, programs)
 
             data = bytes(instruction.data)
