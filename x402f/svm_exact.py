@@ -18,6 +18,7 @@ from x402.mechanisms.svm.constants import (
     ERR_SIMULATION_FAILED,
     ERR_TRANSACTION_DECODE_FAILED,
     ERR_UNSUPPORTED_SCHEME,
+    LIGHTHOUSE_PROGRAM_ADDRESS,
     MAX_COMPUTE_UNIT_PRICE_MICROLAMPORTS,
     MEMO_PROGRAM_ADDRESS,
     SCHEME_EXACT,
@@ -37,6 +38,15 @@ ERR_AMOUNT_MISMATCH = "invalid_exact_svm_payload_amount_mismatch"
 ERR_FEE_PAYER_ACCOUNT_MISMATCH = "invalid_exact_svm_payload_fee_payer_account_mismatch"
 ERR_FEE_PAYER_IN_INSTRUCTION = "invalid_exact_svm_payload_fee_payer_in_instruction"
 ERR_SIGNER_SET_MISMATCH = "invalid_exact_svm_payload_signer_set_mismatch"
+PHANTOM_FEE_PAYER_ASSERTION = bytes.fromhex("06040203000001000000000000000000")
+
+
+def _is_safe_lighthouse_fee_payer_assertion(instruction, program: Pubkey, lighthouse_program: Pubkey) -> bool:
+    return (
+        program == lighthouse_program
+        and list(instruction.accounts) == [0]
+        and bytes(instruction.data) == PHANTOM_FEE_PAYER_ASSERTION
+    )
 
 
 class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
@@ -84,6 +94,7 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
             Pubkey.from_string(TOKEN_PROGRAM_ADDRESS),
             Pubkey.from_string(TOKEN_2022_PROGRAM_ADDRESS),
         }
+        lighthouse_program = Pubkey.from_string(LIGHTHOUSE_PROGRAM_ADDRESS)
         memo_program = Pubkey.from_string(MEMO_PROGRAM_ADDRESS)
         limit_values: list[int] = []
         price_values: list[int] = []
@@ -91,7 +102,9 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
         memo_instructions = []
 
         for instruction, program in zip(instructions, programs, strict=True):
-            if 0 in instruction.accounts:
+            if 0 in instruction.accounts and not _is_safe_lighthouse_fee_payer_assertion(
+                instruction, program, lighthouse_program
+            ):
                 return self._invalid_layout(ERR_FEE_PAYER_IN_INSTRUCTION, programs)
 
             data = bytes(instruction.data)

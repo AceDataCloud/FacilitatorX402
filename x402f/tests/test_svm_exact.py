@@ -27,6 +27,7 @@ from x402f.svm_exact import (
     ERR_FEE_PAYER_ACCOUNT_MISMATCH,
     ERR_FEE_PAYER_IN_INSTRUCTION,
     ERR_SIGNER_SET_MISMATCH,
+    PHANTOM_FEE_PAYER_ASSERTION,
     OutcomeExactSvmFacilitatorScheme,
 )
 
@@ -53,11 +54,16 @@ class FakeSigner:
         self.simulated = True
 
 
-def lighthouse(payer: Pubkey, discriminator: int = 6) -> Instruction:
+def lighthouse(
+    payer: Pubkey,
+    discriminator: int = 6,
+    extra_accounts: list[AccountMeta] | None = None,
+    data: bytes | None = None,
+) -> Instruction:
     return Instruction(
         Pubkey.from_string(LIGHTHOUSE_PROGRAM_ADDRESS),
-        bytes([discriminator]) + b"lighthouse",
-        [AccountMeta(payer, is_signer=False, is_writable=False)],
+        data if data is not None else bytes([discriminator]) + b"lighthouse",
+        [AccountMeta(payer, is_signer=False, is_writable=False), *(extra_accounts or [])],
     )
 
 
@@ -153,6 +159,56 @@ def test_accepts_observed_phantom_eight_instruction_layout() -> None:
     assert result.is_valid is True
     assert result.payer == str(payer.pubkey())
     assert signer.simulated is True
+
+
+def test_accepts_phantom_lighthouse_reference_to_sponsored_fee_payer() -> None:
+    sponsor = Keypair()
+    payer = Keypair()
+    payload, requirements, signer = payment(
+        authority=payer,
+        fee_payer=sponsor,
+        extras_before=[lighthouse(sponsor.pubkey(), data=PHANTOM_FEE_PAYER_ASSERTION)],
+        extras_after=[memo()],
+    )
+
+    result = verify(payload, requirements, signer)
+
+    assert result.is_valid is True
+    assert result.payer == str(payer.pubkey())
+    assert signer.simulated is True
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        lighthouse(Keypair().pubkey(), data=bytes([10]) + PHANTOM_FEE_PAYER_ASSERTION[1:]),
+        lighthouse(
+            Keypair().pubkey(),
+            extra_accounts=[AccountMeta(Keypair().pubkey(), is_signer=False, is_writable=False)],
+            data=PHANTOM_FEE_PAYER_ASSERTION,
+        ),
+        lighthouse(Keypair().pubkey(), data=b""),
+        lighthouse(Keypair().pubkey(), data=bytes([6]) + b"mutable-balance-assertion"),
+    ],
+)
+def test_rejects_other_lighthouse_shapes_that_reference_sponsored_fee_payer(unsafe: Instruction) -> None:
+    sponsor = Keypair()
+    unsafe = Instruction(
+        unsafe.program_id,
+        unsafe.data,
+        [AccountMeta(sponsor.pubkey(), is_signer=False, is_writable=False), *unsafe.accounts[1:]],
+    )
+    payload, requirements, signer = payment(
+        fee_payer=sponsor,
+        extras_before=[unsafe],
+        extras_after=[memo()],
+    )
+
+    result = verify(payload, requirements, signer)
+
+    assert result.is_valid is False
+    assert result.invalid_reason == ERR_FEE_PAYER_IN_INSTRUCTION
+    assert signer.simulated is False
 
 
 def test_accepts_wallet_instruction_without_positional_assumptions() -> None:
