@@ -115,6 +115,44 @@ def test_catalog_signature_and_page_proof_fail_closed() -> None:
         bazaar.verify_catalog(payload)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://platform-backend:8000/internal/v1/x402/bazaar-resources",
+        "https://attacker.example/api/v1/x402/bazaar-catalog/",
+        "https://platform.acedata.cloud/internal/v1/x402/bazaar-resources",
+        "https://user@platform.acedata.cloud/api/v1/x402/bazaar-catalog/",
+        "https://platform.acedata.cloud/api/v1/x402/bazaar-catalog/?next=evil",
+    ],
+)
+@override_settings(
+    X402_BAZAAR_CATALOG_ACCESS_TOKEN="access",
+    X402_BAZAAR_CATALOG_SIGNING_SECRET=SECRET,
+)
+def test_catalog_source_rejects_noncanonical_cross_zone_urls(url) -> None:
+    with override_settings(X402_BAZAAR_CATALOG_URL=url):
+        with pytest.raises(bazaar.BazaarCatalogError, match="catalog URL"):
+            bazaar.fetch_catalog()
+
+
+@override_settings(
+    X402_BAZAAR_CATALOG_URL="https://platform.acedata.cloud/api/v1/x402/bazaar-catalog/",
+    X402_BAZAAR_CATALOG_ACCESS_TOKEN="access",
+    X402_BAZAAR_CATALOG_SIGNING_SECRET=SECRET,
+)
+@patch("x402f.bazaar.verify_catalog")
+@patch("x402f.bazaar._read_json")
+def test_catalog_source_accepts_authenticated_platform_origin(read_json, verify_catalog) -> None:
+    payload = signed_catalog()
+    read_json.return_value = (payload, {})
+
+    assert bazaar.fetch_catalog() == payload
+    request = read_json.call_args.args[0]
+    assert request.full_url == "https://platform.acedata.cloud/api/v1/x402/bazaar-catalog/?limit=200"
+    assert request.headers["X-internal-token"] == "access"
+    verify_catalog.assert_called_once_with(payload)
+
+
 @override_settings(
     X402_BAZAAR_RESOURCE_ORIGIN="https://x402.acedata.cloud",
     X402_BASE_EXACT_ENABLED=True,

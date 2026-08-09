@@ -58,9 +58,15 @@ def _read_json(request: urllib.request.Request, *, max_bytes: int, timeout: floa
 
 def fetch_catalog() -> dict[str, Any]:
     parsed = urlsplit(settings.X402_BAZAAR_CATALOG_URL)
-    if parsed.scheme != "http" or parsed.hostname != "platform-backend" or parsed.port not in {None, 8000}:
-        raise BazaarCatalogError("Bazaar catalog URL must use the cluster-local backend service")
-    if parsed.path != "/internal/v1/x402/bazaar-resources" or parsed.query or parsed.fragment:
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "platform.acedata.cloud"
+        or parsed.port not in {None, 443}
+        or parsed.username
+        or parsed.password
+    ):
+        raise BazaarCatalogError("Bazaar catalog URL must use the platform control-plane origin")
+    if parsed.path != "/api/v1/x402/bazaar-catalog/" or parsed.query or parsed.fragment:
         raise BazaarCatalogError("Bazaar catalog URL is invalid")
     if not settings.X402_BAZAAR_CATALOG_ACCESS_TOKEN:
         raise BazaarCatalogError("Bazaar catalog access token is missing")
