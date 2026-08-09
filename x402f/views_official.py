@@ -3,7 +3,7 @@ import json
 import secrets
 import threading
 import zlib
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from datetime import timezone as datetime_timezone
@@ -39,6 +39,23 @@ from x402f.official import (
     build_configured_facilitator,
     configured_base_network,
     configured_supported_response,
+)
+from x402f.svm_recurring import (
+    RecurringAuthorizationError,
+    build_transfer_transaction,
+    is_recurring_payload,
+    load_recurring_delegation,
+    validate_delegation,
+    verify_recurring,
+)
+from x402f.svm_recurring import (
+    payment_identity as recurring_payment_identity,
+)
+from x402f.svm_recurring import (
+    send_prepared as send_recurring_prepared,
+)
+from x402f.svm_recurring import (
+    transaction_status as recurring_transaction_status,
 )
 
 RequestModel = TypeVar("RequestModel", bound=BaseModel)
@@ -173,12 +190,35 @@ def _canonical_json(value: dict) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def _serialized_payment_payload(request_model) -> dict:  # noqa: ANN001
+    payment_payload = getattr(request_model, "payment_payload", None)
+    if payment_payload is None:
+        return {}
+    if hasattr(payment_payload, "model_dump"):
+        return payment_payload.model_dump(mode="json", by_alias=True)
+    if isinstance(payment_payload, dict):
+        return payment_payload
+    raw = getattr(payment_payload, "payload", {})
+    return {"payload": raw if isinstance(raw, dict) else {}}
+
+
 def _payment_identity(request_model: VerifyRequest | SettleRequest) -> PaymentIdentity:
     raw_payload = request_model.payment_payload.payload
     requirements = request_model.payment_requirements
     network = str(requirements.network)
     scheme = str(requirements.scheme)
     signature = str(raw_payload.get("signature") or "")
+
+    serialized_payload = _serialized_payment_payload(request_model)
+    if is_recurring_payload(serialized_payload):
+        identity = recurring_payment_identity(serialized_payload, network, requirements.max_timeout_seconds)
+        return PaymentIdentity(
+            nonce=identity["nonce"],
+            payer=identity["payer"],
+            signature=identity["signature"],
+            valid_after=identity["valid_after"],
+            valid_before=identity["valid_before"],
+        )
 
     if network.startswith("solana:"):
         svm_payload = ExactSvmPayload.from_dict(raw_payload)
@@ -281,7 +321,12 @@ def _validate_policy(request_model: VerifyRequest | SettleRequest) -> None:
     requirements = request_model.payment_requirements
     network = str(requirements.network)
     policy = _rail_policy(network)
-    if requirements.scheme not in policy.schemes:
+    recurring = is_recurring_payload(_serialized_payment_payload(request_model))
+    if recurring:
+        enabled = settings.X402_SOLANA_RECURRING_ENABLED and network == SOLANA_MAINNET_CAIP2
+        if not enabled or requirements.scheme != "upto":
+            raise ValueError("Unsupported payment kind")
+    elif requirements.scheme not in policy.schemes:
         raise ValueError("Unsupported payment kind")
     asset_matches = (
         requirements.asset == policy.asset
@@ -297,6 +342,20 @@ def _validate_policy(request_model: VerifyRequest | SettleRequest) -> None:
         raise ValueError("Unsupported payment asset")
     if not policy.pay_to or not pay_to_matches:
         raise ValueError("Unsupported payment recipient")
+
+
+def _verify_request(verify_request: VerifyRequest, configured: ConfiguredFacilitator):
+    serialized_payload = verify_request.payment_payload.model_dump(mode="json", by_alias=True)
+    if not is_recurring_payload(serialized_payload):
+        return configured.facilitator.verify(verify_request.payment_payload, verify_request.payment_requirements)
+    amount = str(verify_request.payment_requirements.amount)
+    if not amount.isdigit():
+        return VerifyResponse(is_valid=False, invalid_reason="Recurring authorization amount is invalid.")
+    try:
+        delegation, _ = verify_recurring(serialized_payload, int(amount))
+    except RecurringAuthorizationError as exc:
+        return VerifyResponse(is_valid=False, invalid_reason=str(exc))
+    return VerifyResponse(is_valid=True, payer=delegation.wallet)
 
 
 def _settlement_requirements_match(record: X402Authorization, incoming: dict) -> tuple[bool, str]:
@@ -357,11 +416,14 @@ class X402VerifyView(APIView):
                 and existing.signature == identity.signature
             ):
                 try:
-                    configured = _configured(str(requirements.network))
-                    result = configured.facilitator.verify(
-                        verify_request.payment_payload,
-                        verify_request.payment_requirements,
-                    )
+                    if is_recurring_payload(serialized_payload):
+                        delegation_address = str((serialized_payload.get("payload") or {}).get("delegation") or "")
+                        delegation = load_recurring_delegation(delegation_address)
+                        validate_delegation(delegation)
+                        result = VerifyResponse(is_valid=True, payer=delegation.wallet)
+                    else:
+                        configured = _configured(str(requirements.network))
+                        result = _verify_request(verify_request, configured)
                 except Exception:
                     return _invalid_verify("Unable to revalidate reserved payment authorization.")
                 return _response(result)
@@ -369,10 +431,7 @@ class X402VerifyView(APIView):
 
         try:
             configured = _configured(str(requirements.network))
-            result = configured.facilitator.verify(
-                verify_request.payment_payload,
-                verify_request.payment_requirements,
-            )
+            result = _verify_request(verify_request, configured)
         except Exception as exc:
             logger.error("official x402 verify failed: {}", exc)
             return _invalid_verify("Facilitator verification failed.")
@@ -400,20 +459,31 @@ class X402VerifyView(APIView):
             return _response(result)
 
         try:
-            with transaction.atomic():
-                X402Authorization.objects.create(
-                    nonce=identity.nonce,
-                    verification_id=verification_id or None,
-                    payer=result.payer or identity.payer,
-                    pay_to=requirements.pay_to,
-                    value=requirements.amount,
-                    valid_after=identity.valid_after,
-                    valid_before=identity.valid_before,
-                    signature=identity.signature,
-                    payment_requirements=serialized_requirements,
-                    payment_payload=serialized_payload,
-                    scheme=requirements.scheme,
-                )
+            recurring = is_recurring_payload(serialized_payload)
+            lock = (
+                _signer_lock(f"{requirements.network}:{serialized_payload.get('payload', {}).get('delegation')}")
+                if recurring
+                else nullcontext()
+            )
+            with lock:
+                if recurring:
+                    result = _verify_request(verify_request, _configured(str(requirements.network)))
+                    if not result.is_valid:
+                        return _response(result)
+                with transaction.atomic():
+                    X402Authorization.objects.create(
+                        nonce=identity.nonce,
+                        verification_id=verification_id or None,
+                        payer=result.payer or identity.payer,
+                        pay_to=requirements.pay_to,
+                        value=requirements.amount,
+                        valid_after=identity.valid_after,
+                        valid_before=identity.valid_before,
+                        signature=identity.signature,
+                        payment_requirements=serialized_requirements,
+                        payment_payload=serialized_payload,
+                        scheme=requirements.scheme,
+                    )
         except IntegrityError:
             existing = X402Authorization.objects.filter(nonce=identity.nonce).first()
             if (
@@ -437,6 +507,143 @@ class X402VerifyView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return _response(result)
+
+
+def _settle_recurring(
+    record: X402Authorization,
+    identity: PaymentIdentity,
+    settled_amount: str,
+    network: str,
+) -> Response:
+    if not settled_amount.isdigit() or int(settled_amount) > int(record.value):
+        return _failed_settle("Settlement amount exceeds the verified ceiling.", network=network)
+    if int(settled_amount) == 0:
+        X402Authorization.objects.filter(
+            pk=record.pk,
+            status=X402Authorization.Status.VERIFIED,
+        ).update(
+            status=X402Authorization.Status.RELEASED,
+            settled_amount="0",
+            settled_at=timezone.now(),
+        )
+        return _response(SettleResponse(success=True, payer=record.payer, transaction="", network=network, amount="0"))
+    if record.status == X402Authorization.Status.SETTLED:
+        return _response(
+            SettleResponse(
+                success=True,
+                payer=record.payer,
+                transaction=record.transaction_hash or "",
+                network=network,
+                amount=record.settled_amount or record.value,
+            )
+        )
+    if record.status == X402Authorization.Status.RELEASED:
+        return _failed_settle("Payment authorization was released.", network=network)
+
+    if record.transaction_hash:
+        try:
+            tx_status = recurring_transaction_status(record.transaction_hash)
+        except Exception as exc:
+            logger.error("recurring x402 reconciliation failed: nonce={} error={}", identity.nonce, exc)
+            return _failed_settle("Settlement transaction status is unavailable.", record.transaction_hash, network)
+        if tx_status == "confirmed":
+            X402Authorization.objects.filter(pk=record.pk).update(
+                status=X402Authorization.Status.SETTLED,
+                settled_at=timezone.now(),
+                settling_started_at=None,
+            )
+            return _response(
+                SettleResponse(
+                    success=True,
+                    payer=record.payer,
+                    transaction=record.transaction_hash,
+                    network=network,
+                    amount=record.settled_amount or settled_amount,
+                )
+            )
+        if tx_status == "failed":
+            X402Authorization.objects.filter(pk=record.pk).update(
+                status=X402Authorization.Status.VERIFIED,
+                transaction_hash=None,
+                prepared_transaction=None,
+                settled_amount=None,
+                transaction_broadcast_at=None,
+                settling_started_at=None,
+            )
+            return _failed_settle("Settlement transaction failed on-chain.", record.transaction_hash, network)
+        if record.prepared_transaction:
+            try:
+                send_recurring_prepared(record.prepared_transaction)
+            except Exception as exc:
+                logger.warning("recurring x402 rebroadcast failed: nonce={} error={}", identity.nonce, exc)
+        return _failed_settle("Settlement transaction is pending confirmation.", record.transaction_hash, network)
+
+    lease_cutoff = timezone.now() - timedelta(seconds=settings.X402_SETTLEMENT_LEASE_SECONDS)
+    claim_started_at = timezone.now()
+    claimed = (
+        X402Authorization.objects.filter(pk=record.pk, transaction_hash__isnull=True)
+        .filter(
+            Q(status=X402Authorization.Status.VERIFIED)
+            | Q(status=X402Authorization.Status.SETTLING, settling_started_at__lt=lease_cutoff)
+        )
+        .update(
+            status=X402Authorization.Status.SETTLING,
+            settling_started_at=claim_started_at,
+            settled_amount=settled_amount,
+        )
+    )
+    if claimed != 1:
+        return _failed_settle("Settlement is already in progress.", network=network)
+
+    payload = record.payment_payload
+    delegation_address = str((payload.get("payload") or {}).get("delegation") or "")
+    try:
+        with _signer_lock(f"{network}:{delegation_address}"):
+            delegation, _ = verify_recurring(payload, int(settled_amount), include_reservations=False)
+            transaction_hash, prepared = build_transfer_transaction(delegation, int(settled_amount))
+            persisted = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash__isnull=True,
+                settling_started_at=claim_started_at,
+            ).update(
+                transaction_hash=transaction_hash,
+                prepared_transaction=prepared,
+            )
+            if persisted != 1:
+                raise RuntimeError("Unable to persist prepared recurring settlement")
+            submitted = send_recurring_prepared(prepared)
+            if submitted != transaction_hash:
+                raise RuntimeError("Recurring settlement signature changed during broadcast")
+            X402Authorization.objects.filter(pk=record.pk, transaction_hash=transaction_hash).update(
+                status=X402Authorization.Status.SETTLED,
+                transaction_broadcast_at=timezone.now(),
+                settled_at=timezone.now(),
+                settling_started_at=None,
+            )
+    except Exception as exc:
+        logger.error("recurring x402 settlement failed: nonce={} error={}", identity.nonce, exc)
+        current = X402Authorization.objects.get(pk=record.pk)
+        if not current.transaction_hash:
+            X402Authorization.objects.filter(pk=record.pk).update(
+                status=X402Authorization.Status.VERIFIED,
+                settled_amount=None,
+                settling_started_at=None,
+            )
+        return _failed_settle(
+            "Facilitator settlement failed.",
+            current.transaction_hash or "",
+            network,
+        )
+    return _response(
+        SettleResponse(
+            success=True,
+            payer=record.payer,
+            transaction=transaction_hash,
+            network=network,
+            amount=settled_amount,
+        )
+    )
 
 
 class X402SettleView(APIView):
@@ -475,6 +682,8 @@ class X402SettleView(APIView):
         network = str(incoming_requirements.get("network"))
         if not requirements_match or incoming_payload != record.payment_payload:
             return _failed_settle("Payment payload or requirements do not match verification.", network=network)
+        if is_recurring_payload(incoming_payload):
+            return _settle_recurring(record, identity, settled_amount, network)
         if record.status == X402Authorization.Status.SETTLED:
             if network.startswith("solana:"):
                 return _failed_settle(
