@@ -2,6 +2,40 @@ from django.db import models
 from django.utils import timezone
 
 
+class BazaarCatalogSnapshot(models.Model):
+    class Status(models.TextChoices):
+        CANDIDATE = "candidate", "Candidate"
+        ACTIVE = "active", "Active"
+        REJECTED = "rejected", "Rejected"
+        SUPERSEDED = "superseded", "Superseded"
+
+    snapshot = models.CharField(max_length=64, unique=True)
+    version = models.CharField(max_length=32)
+    manifest_sha256 = models.CharField(max_length=64)
+    source_signature = models.TextField()
+    source_payload = models.JSONField()
+    projected_payload = models.JSONField()
+    resource_count = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.CANDIDATE)
+    fetched_at = models.DateTimeField()
+    probed_at = models.DateTimeField(blank=True, null=True)
+    activated_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField()
+    error_summary = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["status"],
+                condition=models.Q(status="active"),
+                name="uniq_active_bazaar_catalog_snapshot",
+            )
+        ]
+
+
 class X402Authorization(models.Model):
     class Status(models.TextChoices):
         VERIFIED = "verified", "Verified"

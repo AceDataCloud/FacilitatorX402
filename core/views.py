@@ -360,7 +360,51 @@ def well_known_x402(request):
     return JsonResponse(build_well_known_x402_data(facilitator_url))
 
 
+def _bazaar_discovery(request):  # noqa: ANN001, ANN202
+    from x402f.bazaar import active_catalog
+
+    catalog = active_catalog()
+    if catalog is None:
+        return JsonResponse({"error": "Resource discovery is unavailable."}, status=503)
+    items = catalog.get("items", [])
+    resource_type = request.GET.get("type")
+    pay_to = request.GET.get("payTo")
+    scheme = request.GET.get("scheme")
+    network = request.GET.get("network")
+    extension = request.GET.get("extensions")
+    if resource_type:
+        items = [item for item in items if item.get("type") == resource_type]
+    if extension:
+        items = [item for item in items if extension in (item.get("extensions") or {})]
+    if any((pay_to, scheme, network)):
+        items = [
+            item
+            for item in items
+            if any(
+                (not pay_to or accepted.get("payTo") == pay_to)
+                and (not scheme or accepted.get("scheme") == scheme)
+                and (not network or accepted.get("network") == network)
+                for accepted in item.get("accepts", [])
+            )
+        ]
+    try:
+        limit = max(1, min(int(request.GET.get("limit", "100")), 500))
+        offset = max(0, int(request.GET.get("offset", "0")))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Invalid pagination."}, status=400)
+    page = items[offset : offset + limit]
+    return JsonResponse(
+        {
+            "x402Version": 2,
+            "items": page,
+            "pagination": {"limit": limit, "offset": offset, "total": len(items)},
+        }
+    )
+
+
 def discovery_resources(request):  # noqa: ANN001
+    if settings.X402_BAZAAR_ENABLED:
+        return _bazaar_discovery(request)
     url = settings.X402_DISCOVERY_URL
     parsed = urlsplit(url)
     allowed_hosts = settings.X402_DISCOVERY_ALLOWED_HOSTS
