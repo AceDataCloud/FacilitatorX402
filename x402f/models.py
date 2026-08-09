@@ -7,6 +7,7 @@ class X402Authorization(models.Model):
         VERIFIED = "verified", "Verified"
         SETTLING = "settling", "Settling"
         SETTLED = "settled", "Settled"
+        RELEASED = "released", "Released"
         FAILED = "failed", "Failed"
 
     nonce = models.CharField(max_length=128, unique=True)
