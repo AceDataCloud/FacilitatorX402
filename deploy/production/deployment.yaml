@@ -196,15 +196,15 @@ spec:
             - name: X402_BAZAAR_CATALOG_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
-                  key: CATALOG_ACCESS_TOKEN
+                  key: INTERNAL_CATALOG_TOKEN
                   name: x402
-                  optional: true
+                  optional: false
             - name: X402_BAZAAR_CATALOG_SIGNING_SECRET
               valueFrom:
                 secretKeyRef:
                   key: CATALOG_SIGNING_SECRET
                   name: x402
-                  optional: true
+                  optional: false
             - name: X402_BAZAAR_RESOURCE_ORIGIN
               value: https://x402.acedata.cloud
             - name: X402_DISCOVERY_URL
