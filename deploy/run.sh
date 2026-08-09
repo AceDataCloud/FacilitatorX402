@@ -6,28 +6,32 @@ TAG="${BUILD_NUMBER:-latest}"
 PREFLIGHT_JOB="facilitator-preflight-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 MIGRATION_JOB="facilitator-migrate-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 RECONCILE_SMOKE_JOB="facilitator-reconcile-smoke-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
+BAZAAR_SMOKE_JOB="facilitator-bazaar-smoke-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 SNAPSHOT_DIR="$(mktemp -d)"
 ORIGINAL_DEPLOYMENT_FILE="$SNAPSHOT_DIR/deployment.json"
 ORIGINAL_SPEC_FILE="$SNAPSHOT_DIR/spec.json"
 ORIGINAL_CRONJOB_FILE="$SNAPSHOT_DIR/reconciliation-cronjob.json"
+ORIGINAL_BAZAAR_CRONJOB_FILE="$SNAPSHOT_DIR/bazaar-cronjob.json"
 CUTOVER_COMPLETE=0
 QUIESCE_STARTED=0
 ORIGINAL_CRONJOB_EXISTS=0
+ORIGINAL_BAZAAR_CRONJOB_EXISTS=0
 
 snapshot_cronjob() {
-	local raw="$ORIGINAL_CRONJOB_FILE.raw"
-	if ! kubectl get cronjob/facilitator-reconcile -n acedatacloud --ignore-not-found -o json >"$raw"; then
+	local name="$1"
+	local output="$2"
+	local raw="$output.raw"
+	if ! kubectl get "cronjob/$name" -n acedatacloud --ignore-not-found -o json >"$raw"; then
 		rm -f "$raw"
 		return 1
 	fi
 	if [ ! -s "$raw" ]; then
 		rm -f "$raw"
-		return 0
+		return 2
 	fi
 	jq -e 'del(.status,.metadata.creationTimestamp,.metadata.generation,.metadata.managedFields,.metadata.resourceVersion,.metadata.uid)' \
-		<"$raw" >"$ORIGINAL_CRONJOB_FILE"
+		<"$raw" >"$output"
 	rm -f "$raw"
-	ORIGINAL_CRONJOB_EXISTS=1
 }
 
 rollback() {
@@ -39,6 +43,11 @@ rollback() {
 	else
 		kubectl delete cronjob/facilitator-reconcile -n acedatacloud --ignore-not-found || rollback_failed=1
 	fi
+	if [ "$ORIGINAL_BAZAAR_CRONJOB_EXISTS" -eq 1 ]; then
+		kubectl apply -f "$ORIGINAL_BAZAAR_CRONJOB_FILE" || rollback_failed=1
+	else
+		kubectl delete cronjob/facilitator-bazaar-refresh -n acedatacloud --ignore-not-found || rollback_failed=1
+	fi
 	if [ "$ORIGINAL_REPLICAS" -gt 0 ]; then
 		kubectl rollout status deployment/facilitator-backend -n acedatacloud --timeout=600s || rollback_failed=1
 	fi
@@ -48,7 +57,7 @@ rollback() {
 on_exit() {
 	exit_code=$?
 	trap - EXIT
-	kubectl delete job "$PREFLIGHT_JOB" "$MIGRATION_JOB" "$RECONCILE_SMOKE_JOB" \
+	kubectl delete job "$PREFLIGHT_JOB" "$MIGRATION_JOB" "$RECONCILE_SMOKE_JOB" "$BAZAAR_SMOKE_JOB" \
 		-n acedatacloud --ignore-not-found >/dev/null 2>&1 || true
 	if [ "$QUIESCE_STARTED" -eq 1 ] && [ "$CUTOVER_COMPLETE" -ne 1 ] && ! rollback; then
 		exit_code=1
@@ -61,7 +70,16 @@ trap on_exit EXIT
 kubectl get deployment/facilitator-backend -n acedatacloud -o json >"$ORIGINAL_DEPLOYMENT_FILE"
 ORIGINAL_REPLICAS="$(jq -er '.spec.replicas' "$ORIGINAL_DEPLOYMENT_FILE")"
 jq -e '{spec: .spec}' "$ORIGINAL_DEPLOYMENT_FILE" >"$ORIGINAL_SPEC_FILE"
-snapshot_cronjob
+if snapshot_cronjob facilitator-reconcile "$ORIGINAL_CRONJOB_FILE"; then
+	ORIGINAL_CRONJOB_EXISTS=1
+elif [ "$?" -ne 2 ]; then
+	exit 1
+fi
+if snapshot_cronjob facilitator-bazaar-refresh "$ORIGINAL_BAZAAR_CRONJOB_FILE"; then
+	ORIGINAL_BAZAAR_CRONJOB_EXISTS=1
+elif [ "$?" -ne 2 ]; then
+	exit 1
+fi
 
 # Freeze legacy verify traffic before checking for unsettled authorizations.
 # The Gateway x402 feature flag must already be disabled per the cutover runbook.
@@ -104,4 +122,15 @@ if ! kubectl wait --for=condition=complete "job/$RECONCILE_SMOKE_JOB" -n acedata
 fi
 kubectl logs "job/$RECONCILE_SMOKE_JOB" -n acedatacloud
 kubectl delete job "$RECONCILE_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
+
+# shellcheck disable=SC2016
+sed 's/\${TAG}/'"$TAG"'/g' deploy/production/bazaar-cronjob.yaml | kubectl apply -f -
+kubectl delete job "$BAZAAR_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
+kubectl create job "$BAZAAR_SMOKE_JOB" -n acedatacloud --from=cronjob/facilitator-bazaar-refresh
+if ! kubectl wait --for=condition=complete "job/$BAZAAR_SMOKE_JOB" -n acedatacloud --timeout=120s; then
+	kubectl logs "job/$BAZAAR_SMOKE_JOB" -n acedatacloud
+	exit 1
+fi
+kubectl logs "job/$BAZAAR_SMOKE_JOB" -n acedatacloud
+kubectl delete job "$BAZAAR_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
 CUTOVER_COMPLETE=1
