@@ -914,14 +914,14 @@ bcrypt = ["bcrypt"]
 
 [[package]]
 name = "djangorestframework"
-version = "3.17.1"
+version = "3.17.2"
 description = "Web APIs for Django, made easy."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "djangorestframework-3.17.1-py3-none-any.whl", hash = "sha256:c3c74dd3e83a5a3efc37b3c18d92bd6f86a6791c7b7d4dff62bb068500e76457"},
-    {file = "djangorestframework-3.17.1.tar.gz", hash = "sha256:a6def5f447fe78ff853bff1d47a3c59bf38f5434b031780b351b0c73a62db1a5"},
+    {file = "djangorestframework-3.17.2-py3-none-any.whl", hash = "sha256:cb0546a7415d5b46c04e0f4fe0a54b2109f4fdd5e83ca773c8c6183a6493d042"},
+    {file = "djangorestframework-3.17.2.tar.gz", hash = "sha256:89ed713b6dc83e1539f214b7d10808ae19bb8511004beba886225da6d5c9dafa"},
 ]
 
 [package.dependencies]
@@ -2197,18 +2197,21 @@ dev = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "requests
 
 [[package]]
 name = "pytest-django"
-version = "4.12.0"
+version = "4.13.0"
 description = "A Django plugin for pytest."
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "pytest_django-4.12.0-py3-none-any.whl", hash = "sha256:3ff300c49f8350ba2953b90297d23bf5f589db69545f56f1ec5f8cff5da83e85"},
-    {file = "pytest_django-4.12.0.tar.gz", hash = "sha256:df94ec819a83c8979c8f6de13d9cdfbe76e8c21d39473cfe2b40c9fc9be3c758"},
+    {file = "pytest_django-4.13.0-py3-none-any.whl", hash = "sha256:09374c12d947ca0f99e33726bcb720a6d0124f67058e1130586372bd109493e3"},
+    {file = "pytest_django-4.13.0.tar.gz", hash = "sha256:2316e3f63e3bc799deb4212830e39b2ef1dcc3b2d8688060f1d0217db6a56ebe"},
 ]
 
 [package.dependencies]
 pytest = ">=7.0.0"
+
+[package.extras]
+docs = ["sphinx", "sphinx-rtd-theme"]
 
 [[package]]
 name = "python-dotenv"
@@ -2652,14 +2655,14 @@ doc = ["sphinx"]
 
 [[package]]
 name = "tencentcloud-sdk-python"
-version = "3.1.145"
+version = "3.1.151"
 description = "Tencent Cloud SDK for Python"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "tencentcloud_sdk_python-3.1.145-py2.py3-none-any.whl", hash = "sha256:9f41caaf43afea53e69ab6502e60420f81d3c729b617f691e52c7bb8ae1147e6"},
-    {file = "tencentcloud_sdk_python-3.1.145.tar.gz", hash = "sha256:6cebff4fa266041d1574d4b27edc587e0688d2b7b146b114606f7a99960e23db"},
+    {file = "tencentcloud_sdk_python-3.1.151-py2.py3-none-any.whl", hash = "sha256:546761319f7e8a445dd4b9f9f7310aad3423395b443e6927c3eb30826d41cd72"},
+    {file = "tencentcloud_sdk_python-3.1.151.tar.gz", hash = "sha256:a9780e6d5e78384ef07f8a567aa438eff50c082a4610300e119d6c7916383084"},
 ]
 
 [package.dependencies]
@@ -2827,14 +2830,14 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "uvicorn"
-version = "0.52.0"
+version = "0.52.1"
 description = "The lightning-fast ASGI server."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "uvicorn-0.52.0-py3-none-any.whl", hash = "sha256:3d887809810b89ed33501bcf0a9aba469b06ecd608158efce04bd6b48d8c9b08"},
-    {file = "uvicorn-0.52.0.tar.gz", hash = "sha256:ca8876ad6c1983f394157c168b39d52f6dd56dabf5602fa0982751cffc2293ae"},
+    {file = "uvicorn-0.52.1-py3-none-any.whl", hash = "sha256:e4403f9d93188cf9d1088e9f40e3acd12630e2df8675316704379a7fc20fff6a"},
+    {file = "uvicorn-0.52.1.tar.gz", hash = "sha256:112ec661814189acbccd3f7b86460147cc065fc92c0821afa78918780e4354dd"},
 ]
 
 [package.dependencies]
@@ -2976,14 +2979,14 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 
 [[package]]
 name = "x402"
-version = "2.17.0"
+version = "2.18.0"
 description = "x402 Payment Protocol SDK for Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "x402-2.17.0-py3-none-any.whl", hash = "sha256:871f5b9d316274e287ace675c0ce977c59c950d6bfa74570cb9809afbdfc8872"},
-    {file = "x402-2.17.0.tar.gz", hash = "sha256:e6055a87c325e73a07952c5f359a03318f85802918db38130e200f4a9f356a38"},
+    {file = "x402-2.18.0-py3-none-any.whl", hash = "sha256:11c337ae202811916af0e241ee2510803bfd2a4da906f7373f2a6ad6a983219e"},
+    {file = "x402-2.18.0.tar.gz", hash = "sha256:fb30d8de45c8add3a28109c38527843cd7038c9c4c764e761455fd58ccf58aa9"},
 ]
 
 [package.dependencies]
@@ -3154,4 +3157,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.12"
-content-hash = "33dffdc2333fd3816729a9104351cb70307b789bb63423bf9522cc7a57d43469"
+content-hash = "baa79a040cfaedf77a3e72556239dbad1710fbe1a6667117d7176990e8ee98fc"
