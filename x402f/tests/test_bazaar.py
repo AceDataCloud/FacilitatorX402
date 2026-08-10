@@ -177,8 +177,12 @@ def test_challenge_probe_requires_canonical_equivalent_header(read_json) -> None
         wrong_asset,
         {"PAYMENT-REQUIRED": base64.b64encode(json.dumps(wrong_asset).encode()).decode()},
     )
-    with pytest.raises(bazaar.BazaarCatalogError, match="no supported"):
+    with pytest.raises(
+        bazaar.BazaarCatalogError,
+        match="eip155:8453:asset_mismatch",
+    ) as exc_info:
         bazaar._challenge(signed_catalog()["items"][0])
+    assert wrong_asset["accepts"][0]["asset"] not in str(exc_info.value)
 
     mixed = deepcopy(payload)
     unsupported = deepcopy(REQUIREMENT)

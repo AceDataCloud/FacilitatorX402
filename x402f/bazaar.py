@@ -142,7 +142,7 @@ def _same_identifier(network: str, actual: Any, expected: str) -> bool:
     return actual == expected
 
 
-def _supported_requirement(requirement: dict[str, Any]) -> bool:
+def _requirement_support_error(requirement: dict[str, Any]) -> str | None:
     network = str(requirement.get("network") or "")
     scheme = str(requirement.get("scheme") or "")
     expected = {
@@ -153,12 +153,17 @@ def _supported_requirement(requirement: dict[str, Any]) -> bool:
     }.get(network)
     supported = configured_supported_response()
     supported_kinds = {(str(kind.scheme), str(kind.network)) for kind in supported.kinds}
-    return bool(
-        expected
-        and (scheme, network) in supported_kinds
-        and _same_identifier(network, requirement.get("asset"), expected[0])
-        and _same_identifier(network, requirement.get("payTo"), expected[1])
-    )
+    if expected is None or (scheme, network) not in supported_kinds:
+        return "unsupported_kind"
+    if not _same_identifier(network, requirement.get("asset"), expected[0]):
+        return "asset_mismatch"
+    if not _same_identifier(network, requirement.get("payTo"), expected[1]):
+        return "pay_to_mismatch"
+    return None
+
+
+def _supported_requirement(requirement: dict[str, Any]) -> bool:
+    return _requirement_support_error(requirement) is None
 
 
 def _challenge(item: dict[str, Any]) -> dict[str, Any]:
@@ -231,7 +236,10 @@ def _challenge(item: dict[str, Any]) -> dict[str, Any]:
         raise BazaarCatalogError("Bazaar challenge body and header do not match")
     supported_accepts = [requirement for requirement in accepts if _supported_requirement(requirement)]
     if not supported_accepts:
-        raise BazaarCatalogError("Bazaar challenge has no supported payment requirements")
+        reasons = sorted(
+            {f"{requirement.get('network')}:{_requirement_support_error(requirement)}" for requirement in accepts}
+        )
+        raise BazaarCatalogError(f"Bazaar challenge has no supported payment requirements ({', '.join(reasons)})")
     projected = deepcopy(payload)
     projected["accepts"] = supported_accepts
     return projected
