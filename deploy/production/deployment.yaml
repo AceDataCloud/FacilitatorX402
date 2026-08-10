@@ -190,13 +190,13 @@ spec:
             - name: X402_PREPARED_MAX_AGE_SECONDS
               value: "1800"
             - name: X402_BAZAAR_ENABLED
-              value: "false"
+              value: "true"
             - name: X402_BAZAAR_CATALOG_URL
               value: https://platform.acedata.cloud/api/v1/x402/bazaar-catalog/
             - name: X402_BAZAAR_CATALOG_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
-                  key: INTERNAL_CATALOG_TOKEN
+                  key: CATALOG_ACCESS_TOKEN
                   name: x402
                   optional: false
             - name: X402_BAZAAR_CATALOG_SIGNING_SECRET
