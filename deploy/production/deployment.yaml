@@ -90,7 +90,11 @@ spec:
                   name: x402
                   optional: false
             - name: X402_BASE_PAY_TO
-              value: "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7"
+              valueFrom:
+                secretKeyRef:
+                  key: BASE_PAY_TO
+                  name: x402
+                  optional: false
             - name: X402_BASE_EXACT_ENABLED
               value: "true"
             - name: X402_BASE_UPTO_ENABLED
@@ -130,7 +134,11 @@ spec:
                   name: x402
                   optional: false
             - name: X402_SOLANA_PAY_TO
-              value: "5iVXFrYaYWX2GUTbkQj8mDBoBhAX8bneYigS2LJTia43"
+              valueFrom:
+                secretKeyRef:
+                  key: SOLANA_PAY_TO
+                  name: x402
+                  optional: false
             - name: X402_SOLANA_MAINNET_ENABLED
               value: "true"
             - name: X402_SOLANA_RECURRING_ENABLED
@@ -166,7 +174,11 @@ spec:
                   name: x402
                   optional: false
             - name: X402_SKALE_PAY_TO
-              value: "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7"
+              valueFrom:
+                secretKeyRef:
+                  key: SKALE_PAY_TO
+                  name: x402
+                  optional: false
             - name: X402_SKALE_CHAIN_ID
               value: "1187947933"
             - name: X402_SKALE_GAS_LIMIT
