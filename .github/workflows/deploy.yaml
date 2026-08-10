@@ -63,5 +63,13 @@ jobs:
           kubectl get nodes
           kubectl get svc -n acedatacloud
 
+      # The catalog credentials are minted in the HK cluster next to
+      # PlatformBackend; mirror them here so both zones share one HMAC + token.
+      - name: Sync catalog credentials
+        env:
+          CATALOG_ACCESS_TOKEN: ${{ secrets.X402_CATALOG_ACCESS_TOKEN }}
+          CATALOG_SIGNING_SECRET: ${{ secrets.X402_CATALOG_SIGNING_SECRET }}
+        run: bash ./deploy/catalog-secrets.sh
+
       - name: Deploy
         run: bash ./deploy/run.sh

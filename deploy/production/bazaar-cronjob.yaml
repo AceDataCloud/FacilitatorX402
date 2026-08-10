@@ -53,7 +53,7 @@ spec:
                 - name: X402_BAZAAR_CATALOG_ACCESS_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      key: INTERNAL_CATALOG_TOKEN
+                      key: CATALOG_ACCESS_TOKEN
                       name: x402
                       optional: false
                 - name: X402_BAZAAR_CATALOG_SIGNING_SECRET
