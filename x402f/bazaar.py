@@ -134,6 +134,14 @@ def _expected_resource(path: str) -> str:
     return f"{settings.X402_BAZAAR_RESOURCE_ORIGIN}{path}"
 
 
+def _same_identifier(network: str, actual: Any, expected: str) -> bool:
+    if not isinstance(actual, str) or not actual or not expected:
+        return False
+    if network.startswith("eip155:"):
+        return actual.lower() == expected.lower()
+    return actual == expected
+
+
 def _supported_requirement(requirement: dict[str, Any]) -> bool:
     network = str(requirement.get("network") or "")
     scheme = str(requirement.get("scheme") or "")
@@ -148,8 +156,8 @@ def _supported_requirement(requirement: dict[str, Any]) -> bool:
     return bool(
         expected
         and (scheme, network) in supported_kinds
-        and requirement.get("asset") == expected[0]
-        and requirement.get("payTo") == expected[1]
+        and _same_identifier(network, requirement.get("asset"), expected[0])
+        and _same_identifier(network, requirement.get("payTo"), expected[1])
     )
 
 
