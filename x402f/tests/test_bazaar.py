@@ -177,7 +177,27 @@ def test_challenge_probe_requires_canonical_equivalent_header(read_json) -> None
         wrong_asset,
         {"PAYMENT-REQUIRED": base64.b64encode(json.dumps(wrong_asset).encode()).decode()},
     )
-    with pytest.raises(bazaar.BazaarCatalogError, match="unsupported"):
+    with pytest.raises(bazaar.BazaarCatalogError, match="no supported"):
+        bazaar._challenge(signed_catalog()["items"][0])
+
+    mixed = deepcopy(payload)
+    unsupported = deepcopy(REQUIREMENT)
+    unsupported["network"] = "eip155:999999"
+    unsupported["asset"] = "0x0000000000000000000000000000000000000000"
+    mixed["accepts"].insert(0, unsupported)
+    read_json.return_value = (mixed, {"PAYMENT-REQUIRED": base64.b64encode(json.dumps(mixed).encode()).decode()})
+
+    projected = bazaar._challenge(signed_catalog()["items"][0])
+
+    assert projected["accepts"] == [REQUIREMENT]
+
+    invalid_unsupported = deepcopy(mixed)
+    invalid_unsupported["accepts"][0]["amount"] = "0"
+    read_json.return_value = (
+        invalid_unsupported,
+        {"PAYMENT-REQUIRED": base64.b64encode(json.dumps(invalid_unsupported).encode()).decode()},
+    )
+    with pytest.raises(bazaar.BazaarCatalogError, match="amount"):
         bazaar._challenge(signed_catalog()["items"][0])
 
     tampered = deepcopy(payload)

@@ -219,8 +219,6 @@ def _challenge(item: dict[str, Any]) -> dict[str, Any]:
     for requirement in accepts:
         if not isinstance(requirement, dict) or requirement.get("resource") != resource:
             raise BazaarCatalogError("Bazaar payment requirement resource is invalid")
-        if not _supported_requirement(requirement):
-            raise BazaarCatalogError("Bazaar payment requirement is unsupported")
         amount = str(requirement.get("amount") or "")
         if not amount.isdigit() or int(amount) <= 0:
             raise BazaarCatalogError("Bazaar payment requirement amount is invalid")
@@ -231,7 +229,12 @@ def _challenge(item: dict[str, Any]) -> dict[str, Any]:
         raise BazaarCatalogError("Bazaar PAYMENT-REQUIRED header is invalid") from exc
     if header_payload != payload:
         raise BazaarCatalogError("Bazaar challenge body and header do not match")
-    return payload
+    supported_accepts = [requirement for requirement in accepts if _supported_requirement(requirement)]
+    if not supported_accepts:
+        raise BazaarCatalogError("Bazaar challenge has no supported payment requirements")
+    projected = deepcopy(payload)
+    projected["accepts"] = supported_accepts
+    return projected
 
 
 def project_catalog(source: dict[str, Any]) -> dict[str, Any]:
