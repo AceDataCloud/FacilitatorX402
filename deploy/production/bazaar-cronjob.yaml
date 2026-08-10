@@ -68,6 +68,8 @@ spec:
                   value: "true"
                 - name: X402_BASE_UPTO_ENABLED
                   value: "true"
+                - name: X402_BASE_PAY_TO
+                  value: "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7"
                 - name: X402_BASE_SIGNER_ADDRESS
                   valueFrom:
                     secretKeyRef:
@@ -76,6 +78,8 @@ spec:
                       optional: false
                 - name: X402_SOLANA_MAINNET_ENABLED
                   value: "true"
+                - name: X402_SOLANA_PAY_TO
+                  value: "5iVXFrYaYWX2GUTbkQj8mDBoBhAX8bneYigS2LJTia43"
                 - name: X402_SOLANA_SIGNER_ADDRESS
                   valueFrom:
                     secretKeyRef:
@@ -84,6 +88,8 @@ spec:
                       optional: false
                 - name: X402_SKALE_EXACT_ENABLED
                   value: "true"
+                - name: X402_SKALE_PAY_TO
+                  value: "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7"
                 - name: X402_SKALE_SIGNER_ADDRESS
                   valueFrom:
                     secretKeyRef:
