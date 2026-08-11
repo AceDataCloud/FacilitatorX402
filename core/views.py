@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from django.conf import settings
+from django.db import connection
 from django.http import HttpResponse, HttpResponsePermanentRedirect, JsonResponse
+from loguru import logger
 from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
 
 from x402f.official import ROBINHOOD_MAINNET, SKALE_MAINNET
@@ -288,7 +290,21 @@ def home(request):
 
 
 def health(request):
+    # Stays process-only: this is the livenessProbe, and killing pods over a
+    # transient DB/DNS blip would turn an outage into a restart storm.
     return JsonResponse({"status": "ok"})
+
+
+def health_db(request):
+    """Readiness probe that verifies the facilitator database is reachable."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as exc:
+        logger.error("healthz database probe failed: {}", exc)
+        return JsonResponse({"status": "error", "database": "unavailable", "detail": str(exc)}, status=503)
+    return JsonResponse({"status": "ok", "database": "ok"})
 
 
 def build_well_known_x402_data(facilitator_url: str) -> dict:

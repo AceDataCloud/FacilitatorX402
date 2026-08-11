@@ -235,7 +235,7 @@ spec:
           name: facilitator-backend
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /healthz/db
               port: 8000
               httpHeaders:
                 - name: Host
@@ -244,6 +244,8 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 5
             failureThreshold: 24
+          # Liveness stays on the static /healthz on purpose: a DB outage must
+          # take pods out of rotation, never restart them.
           livenessProbe:
             httpGet:
               path: /healthz

@@ -116,7 +116,9 @@ kubectl rollout status deployment/facilitator-backend -n acedatacloud --timeout=
 sed 's/\${TAG}/'"$TAG"'/g' deploy/production/reconciliation-cronjob.yaml | kubectl apply -f -
 kubectl delete job "$RECONCILE_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
 kubectl create job "$RECONCILE_SMOKE_JOB" -n acedatacloud --from=cronjob/facilitator-reconcile
-if ! kubectl wait --for=condition=complete "job/$RECONCILE_SMOKE_JOB" -n acedatacloud --timeout=120s; then
+# Must exceed the CronJob's own activeDeadlineSeconds (120s) so a retried smoke
+# Job reports its real outcome instead of tripping this wait first.
+if ! kubectl wait --for=condition=complete "job/$RECONCILE_SMOKE_JOB" -n acedatacloud --timeout=180s; then
 	kubectl logs "job/$RECONCILE_SMOKE_JOB" -n acedatacloud
 	exit 1
 fi
