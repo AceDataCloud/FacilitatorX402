@@ -71,5 +71,5 @@ jobs:
           CATALOG_SIGNING_SECRET: ${{ secrets.X402_CATALOG_SIGNING_SECRET }}
         run: bash ./deploy/catalog-secrets.sh
 
-      - name: Deploy
-        run: bash ./deploy/run.sh
+      - name: Release with payment safety gates
+        run: bash ./deploy/release.sh
