@@ -48,8 +48,13 @@ def test_production_deploys_queue_instead_of_cancelling() -> None:
 def test_deploy_keeps_the_hardened_us_workflow() -> None:
     text = workflow_text()
 
+    release = (ROOT / "deploy/release.sh").read_text()
+    run = (ROOT / "deploy/run.sh").read_text()
+
     assert "kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}" in text
-    assert "run: bash ./deploy/run.sh" in text
+    assert "run: bash ./deploy/release.sh" in text
+    assert 'TAG="$TAG" sh deploy/run.sh' in release
+    assert "kubectl wait" not in run
     assert "docker compose build" in text
     assert "docker compose push" in text
 
