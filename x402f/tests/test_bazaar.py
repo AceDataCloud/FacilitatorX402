@@ -303,3 +303,27 @@ class BazaarSnapshotTests(TestCase):
         payload.extensions["bazaar"]["info"]["input"]["body"]["query"] = "tampered"
         with pytest.raises(bazaar.BazaarCatalogError, match="does not match"):
             bazaar.validate_payment_discovery(payload, requirements)
+
+
+@override_settings(X402_BAZAAR_RESOURCE_ORIGIN="https://x402.acedata.cloud")
+@patch("x402f.bazaar._read_json")
+def test_challenge_probe_reports_safe_path_and_http_status(read_json) -> None:
+    error = bazaar.urllib.error.HTTPError(
+        "https://x402.acedata.cloud/kling/talking-photo",
+        503,
+        "Service Temporarily Unavailable",
+        {},
+        None,
+    )
+    wrapped = bazaar.BazaarCatalogError("Bazaar endpoint is unavailable")
+    wrapped.__cause__ = error
+    read_json.side_effect = wrapped
+    item = deepcopy(signed_catalog()["items"][0])
+    item["path"] = "/kling/talking-photo"
+
+    with pytest.raises(
+        bazaar.BazaarCatalogError,
+        match=r"Bazaar challenge failed for /kling/talking-photo \(HTTP 503\)",
+    ) as exc_info:
+        bazaar._challenge(item)
+    assert "x402.acedata.cloud" not in str(exc_info.value)
