@@ -203,7 +203,9 @@ def _challenge(item: dict[str, Any]) -> dict[str, Any]:
         )
     except BazaarCatalogError as exc:
         if not isinstance(exc.__cause__, urllib.error.HTTPError) or exc.__cause__.code != 402:
-            raise
+            cause = exc.__cause__
+            status = f"HTTP {cause.code}" if isinstance(cause, urllib.error.HTTPError) else type(cause).__name__
+            raise BazaarCatalogError(f"Bazaar challenge failed for {path} ({status})") from exc
         error = exc.__cause__
         raw = error.read(settings.X402_BAZAAR_MAX_CHALLENGE_BYTES + 1)
         if len(raw) > settings.X402_BAZAAR_MAX_CHALLENGE_BYTES:
