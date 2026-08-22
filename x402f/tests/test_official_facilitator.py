@@ -149,6 +149,7 @@ def test_official_base_exact_supported_and_verified() -> None:
     payload, requirements = _payment()
 
     supported = facilitator.get_supported().model_dump(by_alias=True)
+    assert supported["extensions"] == []
     result = facilitator.verify(payload, requirements)
 
     assert supported["kinds"] == [

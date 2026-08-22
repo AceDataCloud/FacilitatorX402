@@ -26,8 +26,7 @@ It is a testnet compatibility option, not a production rail.
 - `POST /settle`: settle a verified authorization. This endpoint requires
   `X-Settlement-Token`.
 - `GET /.well-known/x402`: facilitator metadata.
-- `GET /discovery/resources`: paginated CAIP-2 resource catalog.
-- `GET /list`: compatibility redirect to discovery.
+- `GET /discovery/resources` and `GET /list`: retired resource-discovery endpoints (HTTP 410 during the removal window).
 
 The official SDK handles protocol parsing, signature verification, simulation,
 and transaction construction. This service adds:
@@ -57,7 +56,7 @@ Core settings:
 
 Each enabled rail requires its RPC URL, signer key/address, approved asset, and
 approved recipient. See [docs/migration.md](docs/migration.md) for the complete
-Base, SKALE, Solana, discovery, migration, cutover, and rollback configuration.
+Base, SKALE, Solana, migration, cutover, and rollback configuration.
 
 ## Development
 

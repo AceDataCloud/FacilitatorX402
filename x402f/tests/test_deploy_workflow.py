@@ -3,21 +3,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy.yaml"
 DEPLOYMENT = ROOT / "deploy" / "production" / "deployment.yaml"
-BAZAAR_CRONJOB = ROOT / "deploy" / "production" / "bazaar-cronjob.yaml"
 
 
 def workflow_text() -> str:
     return WORKFLOW.read_text()
-
-
-def test_bazaar_refresh_pins_public_merchant_pay_to_addresses() -> None:
-    cronjob = BAZAAR_CRONJOB.read_text()
-
-    assert cronjob.count('value: "0x4F0E2D3477a1B94CF33d16E442CEe4733dadCeE7"') == 2
-    assert cronjob.count('value: "5iVXFrYaYWX2GUTbkQj8mDBoBhAX8bneYigS2LJTia43"') == 1
-    for name in ("X402_BASE_PAY_TO", "X402_SOLANA_PAY_TO", "X402_SKALE_PAY_TO"):
-        block = cronjob.split(f"- name: {name}", 1)[1].split("- name:", 1)[0]
-        assert "secretKeyRef" not in block
 
 
 def test_settlement_deployment_keeps_pay_to_in_secrets() -> None:
@@ -54,6 +43,46 @@ def test_deploy_keeps_the_hardened_us_workflow() -> None:
     assert "kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}" in text
     assert "run: bash ./deploy/release.sh" in text
     assert 'TAG="$TAG" sh deploy/run.sh' in release
+    assert "facilitator-bazaar-refresh" not in run
+    assert "kubectl delete cronjob/facilitator-bazaar-refresh" in release
+    assert ".metadata.ownerReferences[]?" in release
+    assert "CronJob" in release
+    assert "--cascade=foreground" in release
+    assert "--timeout=120s --wait=true" in release
+    assert "https://facilitator.acedata.cloud/.well-known/x402" in release
+    assert release.count("--connect-timeout 5 --max-time 15") >= 2
+    assert 'status" = "410"' in release
+    assert "resource_discovery_retired" in release
+    cleanup = release.split("kubectl patch cronjob/facilitator-bazaar-refresh", 1)[1]
+    assert cleanup.index("kubectl delete cronjob/facilitator-bazaar-refresh") < cleanup.index("BAZAAR_JOBS=")
+    rollback_body = release.split("rollback() {", 1)[1].split("on_exit() {", 1)[0]
+    assert rollback_body.index('kubectl apply -f "$ORIGINAL_BAZAAR_CRONJOB_FILE"') < rollback_body.index(
+        "kubectl patch deployment/facilitator-backend"
+    )
+    rollback = (ROOT / "deploy/rollback-bazaar-retirement.sh").read_text()
+    assert "OLD_TAG is required" in rollback
+    assert "CATALOG_ACCESS_TOKEN is required" in rollback
+    assert "CATALOG_SIGNING_SECRET is required" in rollback
+    assert "CURRENT_DEPLOYMENT" in rollback
+    assert "CURRENT_SECRET" in rollback
+    assert "restore_current" in rollback
+    assert 'kubectl apply -f "$CURRENT_SECRET"' not in rollback
+    assert 'original="$(jq -r' in rollback
+    assert "--type=json" in rollback
+    assert 'op: "remove"' in rollback
+    assert "base64 | tr -d" in rollback
+    assert "restore_failed=0" in rollback
+    assert "|| restore_failed=1" in rollback
+    assert 'return "$restore_failed"' in rollback
+    assert "trap on_exit EXIT" in rollback
+    assert "python manage.py check" in rollback
+    assert "deploy/rollback/bazaar-cronjob.yaml" in rollback
+    assert "suspend: true" in (ROOT / "deploy/rollback/bazaar-cronjob.yaml").read_text()
+    preflight = rollback.index("python manage.py check")
+    serving_cutover = rollback.index("deploy/rollback/deployment.yaml")
+    refresh = rollback.index('kubectl create job "$SMOKE_JOB"')
+    assert preflight < serving_cutover < refresh
+    assert refresh < rollback.index('"suspend":false')
     assert "kubectl wait" not in run
     assert "docker compose build" in text
     assert "docker compose push" in text

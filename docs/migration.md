@@ -102,34 +102,24 @@ locking, recovery, authorization policy, deployment, and observability.
   `solana-devnet` records to CAIP-2 without rewriting stored identity.
 - A reconciliation CronJob runs every minute in production.
 
-### Discovery and operations
+### Capability metadata and operations
 
-- `/.well-known/x402` publishes v2 facilitator metadata and enabled kinds.
-- `/discovery/resources` proxies a configured HTTPS discovery source with:
-  - an exact host allowlist;
-  - no credentials, query, fragment, or redirects;
-  - a 5 MiB response limit;
-  - response-shape validation.
-- Production uses the independent PlatformBackend catalog at
-  `https://platform.acedata.cloud/api/v1/x402/discovery/`. The facilitator
-  validates every resource URL against `x402.acedata.cloud`, then converts the
-  URL list into paginated v2 items with the four enabled CAIP-2 payment kinds.
-  Full v2 catalog upstreams are subject to the same resource-host and
-  accept-resource binding checks before pass-through.
-  A source whose host equals the public facilitator host is rejected to prevent
-  recursive discovery after domain cutover.
-- `/list` permanently redirects to `/discovery/resources` for compatibility.
+- `/.well-known/x402` publishes facilitator metadata, enabled kinds, signer
+  addresses, and the `/supported`, `/verify`, and `/settle` endpoints.
+- API resource discovery and the Bazaar extension are retired. During the
+  removal window, `/discovery/resources` and `/list` return HTTP 410 without
+  reading a catalog; they are removed after the compatibility window.
 - The production deployment provides:
   - two replicas;
   - readiness and liveness probes;
-  - PostgreSQL-backed state;
+  - PostgreSQL-backed payment state;
   - a migration Job before rollout;
   - a reconciliation CronJob;
   - resource snapshots and automatic rollback before rollout completion.
 
 ### Tests and delivery
 
-- Official facilitator, view, SVM signer, reconciliation, discovery proxy, and
+- Official facilitator, view, SVM signer, reconciliation, retirement endpoint, and
   migration tests replace legacy handler tests.
 - `.github/workflows/ci.yaml` validates the shared non-root `Dockerfile`.
 - `.github/workflows/deploy.yaml` deploys the canonical production resources
@@ -332,9 +322,9 @@ The production runbook is implemented by `deploy/run.sh`.
    probe.
 10. Apply `deploy/production/reconciliation-cronjob.yaml`, create a one-shot Job
   from it, and require that reconciliation smoke Job to complete.
-11. Validate `/healthz`, `/supported`, `/.well-known/x402`, and discovery.
-  Production discovery must return 43 independently sourced resources, and
-  each item must advertise the four enabled CAIP-2 scheme/network pairs.
+11. Validate `/healthz`, `/supported`, and `/.well-known/x402`; require
+    `/discovery/resources` and `/list` to return the dependency-free HTTP 410
+    retirement response during the compatibility window.
 12. Run one controlled payment per enabled rail and verify the chain receipt,
     database state, and replay behavior.
 13. Re-enable Gateway traffic gradually and monitor failures, pending
@@ -366,7 +356,7 @@ Additional validation included:
 - two ready validation replicas with no restarts;
 - clean CI test, lint, Docker build, image build, and SV deployment jobs.
 
-The migration follow-up adds production-manifest and discovery-cutover checks:
+The migration follow-up added production-manifest and historical discovery-cutover checks:
 
 - 46 retained tests pass with explicit Django configuration;
 - Ruff, formatting, ShellCheck, Django system check, and migration drift checks
@@ -376,8 +366,8 @@ The migration follow-up adds production-manifest and discovery-cutover checks:
 - the SV production Secret contains all 17 required four-rail keys;
 - fake-kubectl success and failure runs prove one-shot Job cleanup plus
   Deployment/CronJob rollback;
-- the real independent PlatformBackend source transforms into 43 discovery
-  items with four CAIP-2 scheme/network pairs per item.
+- historical evidence confirmed the former PlatformBackend discovery source;
+  the discovery runtime is now retired and is not a current release gate.
 
 The SKALE evidence used the same payer and payee address. It proves on-chain
 execution, authorization consumption, and replay handling, but not an independent

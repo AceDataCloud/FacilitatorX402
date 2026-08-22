@@ -31,7 +31,6 @@ from x402.mechanisms.svm.utils import (
 )
 from x402.schemas import SettleRequest, SettleResponse, VerifyRequest, VerifyResponse
 
-from x402f.bazaar import BazaarCatalogError, validate_payment_discovery
 from x402f.models import X402Authorization
 from x402f.official import (
     ROBINHOOD_MAINNET,
@@ -401,10 +400,6 @@ class X402VerifyView(APIView):
             return _invalid_verify(str(exc))
 
         requirements = verify_request.payment_requirements
-        try:
-            validate_payment_discovery(verify_request.payment_payload, requirements)
-        except BazaarCatalogError as exc:
-            return _invalid_verify(str(exc))
         verification_id = request.headers.get("X-Idempotency-Key", "").strip()
         if len(verification_id) > 128:
             return _invalid_verify("X-Idempotency-Key is too long.")
