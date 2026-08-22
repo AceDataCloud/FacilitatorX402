@@ -1,7 +1,3 @@
-def test_resource_discovery_is_retired(client):
+def test_retired_resource_discovery_routes_are_removed(client):
     for path in ("/discovery/resources", "/discovery/resources/", "/list", "/list/"):
-        response = client.get(path)
-        assert response.status_code == 410
-        assert response.json()["code"] == "resource_discovery_retired"
-        assert response["Cache-Control"] == "no-store"
-        assert response["Link"].endswith('>; rel="alternate"')
+        assert client.get(path).status_code == 404
