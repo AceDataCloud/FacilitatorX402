@@ -181,18 +181,3 @@ def well_known_x402(request):
     """Machine-readable facilitator metadata endpoint (/.well-known/x402)."""
     facilitator_url = settings.X402_FACILITATOR_PUBLIC_URL.rstrip("/") or request.build_absolute_uri("/").rstrip("/")
     return JsonResponse(build_well_known_x402_data(facilitator_url))
-
-
-def retired_discovery(request):  # noqa: ANN001
-    response = JsonResponse(
-        {
-            "error": "X402 resource discovery has been retired.",
-            "code": "resource_discovery_retired",
-            "facilitator": request.build_absolute_uri("/.well-known/x402"),
-        },
-        status=410,
-    )
-    response["Cache-Control"] = "no-store"
-    response["Sunset"] = "Sat, 19 Sep 2026 00:00:00 GMT"
-    response["Link"] = f'<{request.build_absolute_uri("/.well-known/x402")}>; rel="alternate"'
-    return response

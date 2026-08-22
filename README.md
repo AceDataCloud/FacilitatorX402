@@ -26,7 +26,6 @@ It is a testnet compatibility option, not a production rail.
 - `POST /settle`: settle a verified authorization. This endpoint requires
   `X-Settlement-Token`.
 - `GET /.well-known/x402`: facilitator metadata.
-- `GET /discovery/resources` and `GET /list`: retired resource-discovery endpoints (HTTP 410 during the removal window).
 
 The official SDK handles protocol parsing, signature verification, simulation,
 and transaction construction. This service adds:
