@@ -276,6 +276,25 @@ class OfficialViewTests(TestCase):
         self.assertEqual(record.verification_id, "retry-1")
 
     @patch("x402f.views_official.build_configured_facilitator")
+    def test_verify_ignores_retired_and_unknown_extensions(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        body = self.body
+        body["paymentPayload"]["extensions"] = {
+            "bazaar": {"legacy": True},
+            "future-extension": {"value": 1},
+        }
+
+        response = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(body),
+            content_type="application/json",
+        )
+
+        self.assertTrue(response.json()["isValid"])
+        record = X402Authorization.objects.get()
+        self.assertEqual(record.payment_payload["extensions"], body["paymentPayload"]["extensions"])
+
+    @patch("x402f.views_official.build_configured_facilitator")
     def test_identical_verify_without_idempotency_key_is_not_reused(self, factory) -> None:
         factory.side_effect = self._facilitator_factory
         body = self.body

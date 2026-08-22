@@ -4,6 +4,7 @@ metadata:
   name: facilitator-bazaar-refresh
   namespace: acedatacloud
 spec:
+  suspend: true
   schedule: "* * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1

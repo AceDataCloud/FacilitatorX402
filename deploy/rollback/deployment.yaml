@@ -189,6 +189,30 @@ spec:
               value: "300"
             - name: X402_PREPARED_MAX_AGE_SECONDS
               value: "1800"
+            - name: X402_BAZAAR_ENABLED
+              value: "true"
+            - name: X402_BAZAAR_CATALOG_URL
+              value: https://platform.acedata.cloud/api/v1/x402/bazaar-catalog/
+            - name: X402_BAZAAR_CATALOG_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: CATALOG_ACCESS_TOKEN
+                  name: x402
+                  optional: false
+            - name: X402_BAZAAR_CATALOG_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  key: CATALOG_SIGNING_SECRET
+                  name: x402
+                  optional: false
+            - name: X402_BAZAAR_RESOURCE_ORIGIN
+              value: https://x402.acedata.cloud
+            - name: X402_DISCOVERY_URL
+              value: https://platform.acedata.cloud/api/v1/x402/discovery/
+            - name: X402_DISCOVERY_ALLOWED_HOSTS
+              value: platform.acedata.cloud
+            - name: X402_DISCOVERY_RESOURCE_HOSTS
+              value: x402.acedata.cloud
             # Tencent Cloud SSM — optional, fills in env vars not already set.
             - name: TENCENT_CLOUD_SECRET_ID
               valueFrom:

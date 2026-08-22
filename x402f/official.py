@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from x402 import x402FacilitatorSync
-from x402.extensions.bazaar import BAZAAR
 from x402.mechanisms.evm.exact import ExactEvmFacilitatorScheme
 from x402.mechanisms.evm.signer import FacilitatorEvmSigner
 from x402.mechanisms.evm.upto import UptoEvmFacilitatorScheme
@@ -235,8 +234,6 @@ def build_configured_registry(
 
     if not signers:
         raise RuntimeError("No x402 facilitator payment kinds are enabled")
-    if settings.X402_BAZAAR_ENABLED:
-        facilitator.register_extension(BAZAAR)
     return ConfiguredFacilitator(facilitator, signers)
 
 
@@ -306,6 +303,6 @@ def configured_supported_response() -> SupportedResponse:
         signers["solana:*"] = list(dict.fromkeys(svm_addresses))
     return SupportedResponse(
         kinds=kinds,
-        extensions=[BAZAAR.key] if settings.X402_BAZAAR_ENABLED else [],
+        extensions=[],
         signers=signers,
     )
