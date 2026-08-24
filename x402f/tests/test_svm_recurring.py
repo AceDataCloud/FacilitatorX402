@@ -1,11 +1,13 @@
 import struct
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey
+from solders.transaction_status import TransactionConfirmationStatus
 
 from x402f.models import X402Authorization
 from x402f.svm_recurring import (
@@ -15,6 +17,7 @@ from x402f.svm_recurring import (
     available_amount,
     parse_recurring_delegation,
     recurring_nonce,
+    transaction_status,
 )
 from x402f.views_official import PaymentIdentity, _settle_recurring
 
@@ -109,6 +112,24 @@ class SvmRecurringTests(TestCase):
         )
         self.assertEqual(available_amount(_delegation(self.delegatee)), 650)
 
+    def test_expired_settling_reservation_remains_reserved(self):
+        now = timezone.now()
+        base = {
+            "payer": WALLET,
+            "pay_to": PAY_TO,
+            "value": "250",
+            "valid_after": now - timedelta(minutes=2),
+            "valid_before": now - timedelta(minutes=1),
+            "signature": "digest",
+            "payment_requirements": {"network": NETWORK, "amount": "250"},
+            "payment_payload": {"payload": {"authorizationProfile": PROFILE, "delegation": DELEGATION}},
+            "scheme": "upto",
+        }
+        X402Authorization.objects.create(nonce="expired-verified", status=X402Authorization.Status.VERIFIED, **base)
+        X402Authorization.objects.create(nonce="expired-settling", status=X402Authorization.Status.SETTLING, **base)
+
+        self.assertEqual(available_amount(_delegation(self.delegatee)), 650)
+
     def test_available_amount_resets_stale_on_chain_period(self):
         stale = int(timezone.now().timestamp()) - PERIOD_SECONDS - 1
         self.assertEqual(available_amount(_delegation(self.delegatee, pulled=900, current_period_start_ts=stale)), 1000)
@@ -138,11 +159,80 @@ class SvmRecurringTests(TestCase):
         send.side_effect = assert_prepared
         response = _settle_recurring(record, self._identity(), "200", NETWORK)
         record.refresh_from_db()
-        self.assertTrue(response.data["success"])
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["transaction"], "tx-signature")
         self.assertEqual(observed, [("tx-signature", "prepared")])
-        self.assertEqual(record.status, X402Authorization.Status.SETTLED)
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.settled_amount, "200")
+        self.assertIsNotNone(record.transaction_broadcast_at)
         build.assert_called_once()
+
+    @patch("x402f.views_official.recurring_transaction_status", return_value="confirmed")
+    def test_confirmed_retry_marks_settled(self, _status):
+        record = self._record()
+        record.status = X402Authorization.Status.SETTLING
+        record.settled_amount = "200"
+        record.transaction_hash = "tx-signature"
+        record.prepared_transaction = "prepared"
+        record.settling_started_at = timezone.now()
+        record.save()
+
+        response = _settle_recurring(record, self._identity(), "200", NETWORK)
+
+        record.refresh_from_db()
+        self.assertTrue(response.data["success"])
+        self.assertEqual(record.status, X402Authorization.Status.SETTLED)
+
+    def test_changed_amount_retry_is_rejected(self):
+        record = self._record()
+        record.status = X402Authorization.Status.SETTLING
+        record.settled_amount = "200"
+        record.settling_started_at = timezone.now()
+        record.save()
+
+        response = _settle_recurring(record, self._identity(), "100", NETWORK)
+
+        self.assertFalse(response.data["success"])
+        self.assertIn("differs", response.data["errorReason"])
+
+    @patch("x402f.svm_recurring._rpc")
+    def test_transaction_status_uses_confirmation_enum_and_history(self, rpc):
+        status = SimpleNamespace(err=None, confirmation_status=TransactionConfirmationStatus.Confirmed)
+        rpc.return_value.get_signature_statuses.return_value = SimpleNamespace(value=[status])
+
+        signature = str(Keypair().sign_message(b"status"))
+        self.assertEqual(transaction_status(signature), "confirmed")
+        call = rpc.return_value.get_signature_statuses.call_args
+        self.assertEqual(str(call.args[0][0]), signature)
+        self.assertTrue(call.kwargs["search_transaction_history"])
+
+    @patch("x402f.views_official.verify_recurring", side_effect=RuntimeError("rpc unavailable"))
+    def test_transient_preparation_failure_stays_retryable(self, _verify):
+        record = self._record()
+
+        response = _settle_recurring(record, self._identity(), "200", NETWORK)
+
+        record.refresh_from_db()
+        self.assertFalse(response.data["success"])
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(record.settled_amount, "200")
+        self.assertIsNone(record.transaction_hash)
+
+    @patch("x402f.views_official.send_recurring_prepared", side_effect=RuntimeError("timeout"))
+    @patch("x402f.views_official.build_transfer_transaction", return_value=("tx-signature", "prepared"))
+    @patch("x402f.views_official.verify_recurring")
+    def test_ambiguous_broadcast_failure_keeps_prepared_transaction(self, verify, _build, _send):
+        verify.return_value = (_delegation(self.delegatee), 900)
+        record = self._record()
+
+        response = _settle_recurring(record, self._identity(), "200", NETWORK)
+
+        record.refresh_from_db()
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["transaction"], "tx-signature")
+        self.assertEqual(record.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(record.transaction_hash, "tx-signature")
+        self.assertEqual(record.prepared_transaction, "prepared")
 
     def _record(self):
         now = timezone.now()

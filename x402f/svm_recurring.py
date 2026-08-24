@@ -7,16 +7,18 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
-from django.db.models import DecimalField, Sum
+from django.db.models import DecimalField, Q, Sum
 from django.db.models.functions import Cast
 from django.utils import timezone
 from solana.rpc.api import Client
+from solana.rpc.types import TxOpts
 from solders.instruction import AccountMeta, Instruction
 from solders.keypair import Keypair
 from solders.message import MessageV0
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solders.transaction import VersionedTransaction
+from solders.transaction_status import TransactionConfirmationStatus
 
 from x402f.models import X402Authorization
 
@@ -26,6 +28,10 @@ ACCOUNT_LEN = 211
 
 
 class RecurringAuthorizationError(ValueError):
+    pass
+
+
+class PermanentRecurringAuthorizationError(RecurringAuthorizationError):
     pass
 
 
@@ -55,7 +61,7 @@ def recurring_payload_fields(payload: dict[str, Any]) -> tuple[str, str]:
     delegation = str(raw.get("delegation") or "")
     request_nonce = str(raw.get("requestNonce") or "")
     if not delegation or not request_nonce or len(request_nonce) > 128:
-        raise RecurringAuthorizationError("Recurring authorization payload is incomplete.")
+        raise PermanentRecurringAuthorizationError("Recurring authorization payload is incomplete.")
     return delegation, request_nonce
 
 
@@ -69,7 +75,7 @@ def _pubkey(data: bytes) -> str:
 
 def parse_recurring_delegation(address: str, data: bytes) -> RecurringDelegation:
     if len(data) != ACCOUNT_LEN or data[0:2] != b"\x03\x01":
-        raise RecurringAuthorizationError("Invalid recurring delegation account.")
+        raise PermanentRecurringAuthorizationError("Invalid recurring delegation account.")
     return RecurringDelegation(
         address=address,
         wallet=_pubkey(data[3:35]),
@@ -96,9 +102,9 @@ def load_recurring_delegation(address: str) -> RecurringDelegation:
     response = _rpc().get_account_info(Pubkey.from_string(address), encoding="base64")
     value = response.value
     if value is None:
-        raise RecurringAuthorizationError("Recurring delegation not found.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation not found.")
     if str(value.owner) != settings.X402_SOLANA_SUBSCRIPTIONS_PROGRAM:
-        raise RecurringAuthorizationError("Recurring delegation owner is invalid.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation owner is invalid.")
     return parse_recurring_delegation(address, bytes(value.data))
 
 
@@ -114,13 +120,13 @@ def _signer_keypair() -> Keypair:
 def validate_delegation(delegation: RecurringDelegation) -> None:
     signer = _signer_keypair()
     if delegation.delegatee != str(signer.pubkey()):
-        raise RecurringAuthorizationError("Recurring delegation delegatee is invalid.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation delegatee is invalid.")
     if delegation.mint != settings.X402_SOLANA_ASSET:
-        raise RecurringAuthorizationError("Recurring delegation asset is invalid.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation asset is invalid.")
     if delegation.period_seconds != PERIOD_SECONDS:
-        raise RecurringAuthorizationError("Recurring delegation period is invalid.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation period is invalid.")
     if delegation.expiry_ts == 0 or delegation.expiry_ts <= int(timezone.now().timestamp()):
-        raise RecurringAuthorizationError("Recurring delegation is expired.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation is expired.")
 
 
 def available_on_chain(delegation: RecurringDelegation) -> int:
@@ -133,8 +139,8 @@ def available_on_chain(delegation: RecurringDelegation) -> int:
 def available_amount(delegation: RecurringDelegation) -> int:
     reserved = (
         X402Authorization.objects.filter(
-            status__in=[X402Authorization.Status.VERIFIED, X402Authorization.Status.SETTLING],
-            valid_before__gt=timezone.now(),
+            Q(status=X402Authorization.Status.SETTLING)
+            | Q(status=X402Authorization.Status.VERIFIED, valid_before__gt=timezone.now()),
             payment_payload__payload__authorizationProfile=PROFILE,
             payment_payload__payload__delegation=delegation.address,
         )
@@ -165,7 +171,7 @@ def verify_recurring(
     delegation = load_recurring_delegation(delegation_address)
     available = available_amount(delegation) if include_reservations else available_on_chain(delegation)
     if amount <= 0 or amount > available:
-        raise RecurringAuthorizationError("Recurring delegation allowance is insufficient.")
+        raise PermanentRecurringAuthorizationError("Recurring delegation allowance is insufficient.")
     return delegation, available
 
 
@@ -185,7 +191,7 @@ def derive_ata(owner: str, mint: str) -> str:
 def build_transfer_transaction(delegation: RecurringDelegation, amount: int) -> tuple[str, str]:
     validate_delegation(delegation)
     if amount <= 0:
-        raise RecurringAuthorizationError("Settlement amount must be positive.")
+        raise PermanentRecurringAuthorizationError("Settlement amount must be positive.")
     signer = _signer_keypair()
     program = Pubkey.from_string(settings.X402_SOLANA_SUBSCRIPTIONS_PROGRAM)
     mint = Pubkey.from_string(delegation.mint)
@@ -217,19 +223,28 @@ def build_transfer_transaction(delegation: RecurringDelegation, amount: int) -> 
 def send_prepared(transaction_base64: str) -> str:
     transaction = VersionedTransaction.from_bytes(base64.b64decode(transaction_base64))
     expected = str(transaction.signatures[0])
-    response = _rpc().send_raw_transaction(bytes(transaction))
+    response = _rpc().send_raw_transaction(
+        bytes(transaction),
+        opts=TxOpts(skip_confirmation=True, skip_preflight=False, preflight_commitment="confirmed"),
+    )
     submitted = str(response.value)
     if submitted != expected:
-        raise RecurringAuthorizationError("RPC returned a different recurring settlement signature.")
+        raise PermanentRecurringAuthorizationError("RPC returned a different recurring settlement signature.")
     return submitted
 
 
 def transaction_status(signature: str) -> str:
-    response = _rpc().get_signature_statuses([Signature.from_string(signature)])
+    response = _rpc().get_signature_statuses(
+        [Signature.from_string(signature)],
+        search_transaction_history=True,
+    )
     if not response.value or response.value[0] is None:
         return "pending"
     value = response.value[0]
     if value.err:
         return "failed"
-    confirmed = value.confirmation_status and str(value.confirmation_status) in {"Confirmed", "Finalized"}
+    confirmed = (
+        value.confirmation_status == TransactionConfirmationStatus.Confirmed
+        or value.confirmation_status == TransactionConfirmationStatus.Finalized
+    )
     return "confirmed" if confirmed else "pending"

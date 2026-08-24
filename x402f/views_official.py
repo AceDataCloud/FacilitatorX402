@@ -41,6 +41,7 @@ from x402f.official import (
     configured_supported_response,
 )
 from x402f.svm_recurring import (
+    PermanentRecurringAuthorizationError,
     RecurringAuthorizationError,
     build_transfer_transaction,
     is_recurring_payload,
@@ -509,6 +510,97 @@ class X402VerifyView(APIView):
         return _response(result)
 
 
+def _recurring_response(record: X402Authorization, network: str, reason: str) -> Response:
+    return _failed_settle(reason, record.transaction_hash or "", network)
+
+
+def advance_recurring_settlement(record: X402Authorization, network: str) -> str:
+    amount = str(record.settled_amount or "")
+    if not amount.isdigit() or int(amount) <= 0:
+        return "invalid"
+
+    if record.transaction_hash:
+        try:
+            tx_status = recurring_transaction_status(record.transaction_hash)
+        except Exception as exc:
+            logger.error("recurring x402 status failed: nonce={} error={}", record.nonce, exc)
+            return "retry"
+        if tx_status == "confirmed":
+            updated = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash=record.transaction_hash,
+            ).update(
+                status=X402Authorization.Status.SETTLED,
+                settled_at=timezone.now(),
+                settling_started_at=None,
+            )
+            return "settled" if updated == 1 else "conflict"
+        if tx_status == "failed":
+            updated = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash=record.transaction_hash,
+            ).update(status=X402Authorization.Status.FAILED, settling_started_at=None)
+            return "failed" if updated == 1 else "conflict"
+        if record.prepared_transaction:
+            try:
+                submitted = send_recurring_prepared(record.prepared_transaction)
+                if submitted != record.transaction_hash:
+                    raise RuntimeError("Recurring settlement signature changed during rebroadcast")
+                X402Authorization.objects.filter(
+                    pk=record.pk,
+                    status=X402Authorization.Status.SETTLING,
+                    transaction_hash=record.transaction_hash,
+                ).update(transaction_broadcast_at=timezone.now())
+            except Exception as exc:
+                logger.warning("recurring x402 rebroadcast failed: nonce={} error={}", record.nonce, exc)
+                return "retry"
+            return "rebroadcast"
+        return "pending"
+
+    payload = record.payment_payload
+    delegation_address = str((payload.get("payload") or {}).get("delegation") or "")
+    try:
+        with _signer_lock(f"{network}:{delegation_address}"):
+            current = X402Authorization.objects.get(pk=record.pk)
+            if current.status != X402Authorization.Status.SETTLING:
+                return "conflict"
+            if current.transaction_hash:
+                return "pending"
+            delegation, _ = verify_recurring(payload, int(amount), include_reservations=False)
+            transaction_hash, prepared = build_transfer_transaction(delegation, int(amount))
+            persisted = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash__isnull=True,
+                settled_amount=amount,
+            ).update(transaction_hash=transaction_hash, prepared_transaction=prepared)
+            if persisted != 1:
+                return "conflict"
+            submitted = send_recurring_prepared(prepared)
+            if submitted != transaction_hash:
+                raise RuntimeError("Recurring settlement signature changed during broadcast")
+            X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash=transaction_hash,
+            ).update(transaction_broadcast_at=timezone.now())
+            record.transaction_hash = transaction_hash
+            record.prepared_transaction = prepared
+            return "broadcast"
+    except PermanentRecurringAuthorizationError as exc:
+        logger.warning("recurring x402 settlement rejected: nonce={} error={}", record.nonce, exc)
+        X402Authorization.objects.filter(
+            pk=record.pk,
+            status=X402Authorization.Status.SETTLING,
+        ).update(status=X402Authorization.Status.FAILED, settling_started_at=None)
+        return "failed"
+    except Exception as exc:
+        logger.error("recurring x402 settlement deferred: nonce={} error={}", record.nonce, exc)
+        return "retry"
+
+
 def _settle_recurring(
     record: X402Authorization,
     identity: PaymentIdentity,
@@ -517,16 +609,8 @@ def _settle_recurring(
 ) -> Response:
     if not settled_amount.isdigit() or int(settled_amount) > int(record.value):
         return _failed_settle("Settlement amount exceeds the verified ceiling.", network=network)
-    if int(settled_amount) == 0:
-        X402Authorization.objects.filter(
-            pk=record.pk,
-            status=X402Authorization.Status.VERIFIED,
-        ).update(
-            status=X402Authorization.Status.RELEASED,
-            settled_amount="0",
-            settled_at=timezone.now(),
-        )
-        return _response(SettleResponse(success=True, payer=record.payer, transaction="", network=network, amount="0"))
+    if record.settled_amount is not None and record.settled_amount != settled_amount:
+        return _failed_settle("Settlement amount differs from the claimed amount.", network=network)
     if record.status == X402Authorization.Status.SETTLED:
         return _response(
             SettleResponse(
@@ -538,112 +622,57 @@ def _settle_recurring(
             )
         )
     if record.status == X402Authorization.Status.RELEASED:
-        return _failed_settle("Payment authorization was released.", network=network)
-
-    if record.transaction_hash:
-        try:
-            tx_status = recurring_transaction_status(record.transaction_hash)
-        except Exception as exc:
-            logger.error("recurring x402 reconciliation failed: nonce={} error={}", identity.nonce, exc)
-            return _failed_settle("Settlement transaction status is unavailable.", record.transaction_hash, network)
-        if tx_status == "confirmed":
-            X402Authorization.objects.filter(pk=record.pk).update(
-                status=X402Authorization.Status.SETTLED,
-                settled_at=timezone.now(),
-                settling_started_at=None,
-            )
+        if settled_amount == "0" and record.settled_amount == "0":
             return _response(
-                SettleResponse(
-                    success=True,
-                    payer=record.payer,
-                    transaction=record.transaction_hash,
-                    network=network,
-                    amount=record.settled_amount or settled_amount,
-                )
+                SettleResponse(success=True, payer=record.payer, transaction="", network=network, amount="0")
             )
-        if tx_status == "failed":
-            X402Authorization.objects.filter(pk=record.pk).update(
-                status=X402Authorization.Status.VERIFIED,
-                transaction_hash=None,
-                prepared_transaction=None,
-                settled_amount=None,
-                transaction_broadcast_at=None,
-                settling_started_at=None,
-            )
-            return _failed_settle("Settlement transaction failed on-chain.", record.transaction_hash, network)
-        if record.prepared_transaction:
-            try:
-                send_recurring_prepared(record.prepared_transaction)
-            except Exception as exc:
-                logger.warning("recurring x402 rebroadcast failed: nonce={} error={}", identity.nonce, exc)
-        return _failed_settle("Settlement transaction is pending confirmation.", record.transaction_hash, network)
+        return _failed_settle("Payment authorization was released.", network=network)
+    if record.status == X402Authorization.Status.FAILED:
+        return _failed_settle("Payment authorization settlement failed.", record.transaction_hash or "", network)
+    if int(settled_amount) == 0:
+        updated = X402Authorization.objects.filter(
+            pk=record.pk,
+            status=X402Authorization.Status.VERIFIED,
+            settled_amount__isnull=True,
+        ).update(status=X402Authorization.Status.RELEASED, settled_amount="0", settled_at=timezone.now())
+        if updated != 1:
+            return _failed_settle("Settlement is already in progress.", network=network)
+        return _response(SettleResponse(success=True, payer=record.payer, transaction="", network=network, amount="0"))
 
-    lease_cutoff = timezone.now() - timedelta(seconds=settings.X402_SETTLEMENT_LEASE_SECONDS)
-    claim_started_at = timezone.now()
-    claimed = (
-        X402Authorization.objects.filter(pk=record.pk, transaction_hash__isnull=True)
-        .filter(
-            Q(status=X402Authorization.Status.VERIFIED)
-            | Q(status=X402Authorization.Status.SETTLING, settling_started_at__lt=lease_cutoff)
-        )
-        .update(
+    if record.status == X402Authorization.Status.VERIFIED:
+        claim_started_at = timezone.now()
+        claimed = X402Authorization.objects.filter(
+            pk=record.pk,
+            status=X402Authorization.Status.VERIFIED,
+            settled_amount__isnull=True,
+        ).update(
             status=X402Authorization.Status.SETTLING,
             settling_started_at=claim_started_at,
             settled_amount=settled_amount,
         )
-    )
-    if claimed != 1:
-        return _failed_settle("Settlement is already in progress.", network=network)
+        if claimed != 1:
+            return _failed_settle("Settlement is already in progress.", network=network)
+        record.status = X402Authorization.Status.SETTLING
+        record.settling_started_at = claim_started_at
+        record.settled_amount = settled_amount
+    elif record.status != X402Authorization.Status.SETTLING:
+        return _failed_settle("Payment authorization cannot be settled.", network=network)
 
-    payload = record.payment_payload
-    delegation_address = str((payload.get("payload") or {}).get("delegation") or "")
-    try:
-        with _signer_lock(f"{network}:{delegation_address}"):
-            delegation, _ = verify_recurring(payload, int(settled_amount), include_reservations=False)
-            transaction_hash, prepared = build_transfer_transaction(delegation, int(settled_amount))
-            persisted = X402Authorization.objects.filter(
-                pk=record.pk,
-                status=X402Authorization.Status.SETTLING,
-                transaction_hash__isnull=True,
-                settling_started_at=claim_started_at,
-            ).update(
-                transaction_hash=transaction_hash,
-                prepared_transaction=prepared,
+    outcome = advance_recurring_settlement(record, network)
+    record.refresh_from_db()
+    if outcome == "settled" or record.status == X402Authorization.Status.SETTLED:
+        return _response(
+            SettleResponse(
+                success=True,
+                payer=record.payer,
+                transaction=record.transaction_hash or "",
+                network=network,
+                amount=record.settled_amount or settled_amount,
             )
-            if persisted != 1:
-                raise RuntimeError("Unable to persist prepared recurring settlement")
-            submitted = send_recurring_prepared(prepared)
-            if submitted != transaction_hash:
-                raise RuntimeError("Recurring settlement signature changed during broadcast")
-            X402Authorization.objects.filter(pk=record.pk, transaction_hash=transaction_hash).update(
-                status=X402Authorization.Status.SETTLED,
-                transaction_broadcast_at=timezone.now(),
-                settled_at=timezone.now(),
-                settling_started_at=None,
-            )
-    except Exception as exc:
-        logger.error("recurring x402 settlement failed: nonce={} error={}", identity.nonce, exc)
-        current = X402Authorization.objects.get(pk=record.pk)
-        if not current.transaction_hash:
-            X402Authorization.objects.filter(pk=record.pk).update(
-                status=X402Authorization.Status.VERIFIED,
-                settled_amount=None,
-                settling_started_at=None,
-            )
-        return _failed_settle(
-            "Facilitator settlement failed.",
-            current.transaction_hash or "",
-            network,
         )
-    return _response(
-        SettleResponse(
-            success=True,
-            payer=record.payer,
-            transaction=transaction_hash,
-            network=network,
-            amount=settled_amount,
-        )
-    )
+    if record.status == X402Authorization.Status.FAILED:
+        return _recurring_response(record, network, "Facilitator settlement failed.")
+    return _recurring_response(record, network, "Settlement transaction is pending confirmation.")
 
 
 class X402SettleView(APIView):

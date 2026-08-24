@@ -8,11 +8,13 @@ from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CA
 
 from x402f.models import X402Authorization
 from x402f.official import SKALE_MAINNET
+from x402f.svm_recurring import is_recurring_payload
 from x402f.views_official import (
     _broadcast_prepared,
     _configured,
     _signer_lock,
     _transaction_status,
+    advance_recurring_settlement,
 )
 
 LEGACY_NETWORKS = {
@@ -28,6 +30,17 @@ def reconcile_record(record: X402Authorization) -> str:
     if not stored_network:
         return "invalid"
     network = LEGACY_NETWORKS.get(stored_network, stored_network)
+    if is_recurring_payload(record.payment_payload):
+        renewed_at = timezone.now()
+        renewed = X402Authorization.objects.filter(
+            pk=record.pk,
+            status=X402Authorization.Status.SETTLING,
+            settling_started_at=record.settling_started_at,
+        ).update(settling_started_at=renewed_at)
+        if renewed != 1:
+            return "conflict"
+        record.settling_started_at = renewed_at
+        return advance_recurring_settlement(record, network)
     if not record.transaction_hash:
         updated = X402Authorization.objects.filter(
             pk=record.pk,
