@@ -387,6 +387,51 @@ class X402SupportedView(APIView):
             return Response({"error": "Facilitator is not configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
+def _same_reserved_operation(
+    record: X402Authorization,
+    verification_id: str,
+    requirements: dict,
+    payload: dict,
+    signature: str,
+) -> bool:
+    return bool(
+        verification_id
+        and record.verification_id == verification_id
+        and record.payment_requirements == requirements
+        and record.payment_payload == payload
+        and record.signature == signature
+        and record.status == X402Authorization.Status.VERIFIED
+        and record.valid_before > timezone.now()
+    )
+
+
+def _replaceable_expired_reservation(record: X402Authorization | None) -> bool:
+    return bool(
+        record
+        and record.status == X402Authorization.Status.VERIFIED
+        and record.valid_before <= timezone.now()
+        and not record.transaction_hash
+    )
+
+
+def _settled_receipt(
+    record: X402Authorization,
+    network: str,
+    *,
+    transaction: str | None = None,
+    amount: str | None = None,
+) -> Response:
+    return _response(
+        SettleResponse(
+            success=True,
+            payer=record.payer,
+            transaction=transaction or record.transaction_hash or "",
+            network=network,
+            amount=amount or record.settled_amount or record.value,
+        )
+    )
+
+
 class X402VerifyView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -407,13 +452,12 @@ class X402VerifyView(APIView):
         serialized_payload = verify_request.payment_payload.model_dump(mode="json", by_alias=True)
         existing = X402Authorization.objects.filter(nonce=identity.nonce).first()
         if existing is not None:
-            if (
-                existing.status == X402Authorization.Status.VERIFIED
-                and bool(verification_id)
-                and existing.verification_id == verification_id
-                and existing.payment_requirements == serialized_requirements
-                and existing.payment_payload == serialized_payload
-                and existing.signature == identity.signature
+            if _same_reserved_operation(
+                existing,
+                verification_id,
+                serialized_requirements,
+                serialized_payload,
+                identity.signature,
             ):
                 try:
                     if is_recurring_payload(serialized_payload):
@@ -422,12 +466,16 @@ class X402VerifyView(APIView):
                         validate_delegation(delegation)
                         result = VerifyResponse(is_valid=True, payer=delegation.wallet)
                     else:
-                        configured = _configured(str(requirements.network))
-                        result = _verify_request(verify_request, configured)
+                        result = _verify_request(verify_request, _configured(str(requirements.network)))
                 except Exception:
                     return _invalid_verify("Unable to revalidate reserved payment authorization.")
                 return _response(result)
             return _invalid_verify("Authorization nonce conflicts with a different payment.")
+        operation_record = (
+            X402Authorization.objects.filter(verification_id=verification_id).first() if verification_id else None
+        )
+        if operation_record and not _replaceable_expired_reservation(operation_record):
+            return _invalid_verify("X-Idempotency-Key conflicts with a different payment.")
 
         try:
             configured = _configured(str(requirements.network))
@@ -471,6 +519,16 @@ class X402VerifyView(APIView):
                     if not result.is_valid:
                         return _response(result)
                 with transaction.atomic():
+                    if verification_id:
+                        operation_record = (
+                            X402Authorization.objects.select_for_update()
+                            .filter(verification_id=verification_id)
+                            .first()
+                        )
+                        if operation_record:
+                            if not _replaceable_expired_reservation(operation_record):
+                                return _invalid_verify("X-Idempotency-Key conflicts with a different payment.")
+                            operation_record.delete()
                     X402Authorization.objects.create(
                         nonce=identity.nonce,
                         verification_id=verification_id or None,
@@ -485,18 +543,20 @@ class X402VerifyView(APIView):
                         scheme=requirements.scheme,
                     )
         except IntegrityError:
-            existing = X402Authorization.objects.filter(nonce=identity.nonce).first()
-            if (
-                existing is not None
-                and existing.status == X402Authorization.Status.VERIFIED
-                and bool(verification_id)
-                and existing.verification_id == verification_id
-                and existing.payment_requirements == serialized_requirements
-                and existing.payment_payload == serialized_payload
-                and existing.signature == identity.signature
+            existing = (
+                X402Authorization.objects.filter(verification_id=verification_id).first()
+                if verification_id
+                else X402Authorization.objects.filter(nonce=identity.nonce).first()
+            )
+            if existing is not None and _same_reserved_operation(
+                existing,
+                verification_id,
+                serialized_requirements,
+                serialized_payload,
+                identity.signature,
             ):
-                return _response(result)
-            return _invalid_verify("Authorization nonce conflicts with a different payment.")
+                return _response(VerifyResponse(is_valid=True, payer=existing.payer))
+            return _invalid_verify("Payment operation conflicts with a different authorization.")
         except Exception as exc:
             logger.error("official x402 reservation failed: nonce={} error={}", identity.nonce, exc)
             return Response(
@@ -646,6 +706,83 @@ def _settle_recurring(
     )
 
 
+class X402ReceiptView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request, *args, **kwargs):  # noqa: ANN001
+        expected_token = settings.X402_SETTLE_TOKEN
+        supplied_token = request.headers.get("X-Settlement-Token", "")
+        if not expected_token or not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
+            return Response({"detail": "Unauthorized receipt caller."}, status=status.HTTP_403_FORBIDDEN)
+        operation_id = request.query_params.get("operation_id", "").strip()
+        transaction_id = request.query_params.get("transaction", "").strip()
+        if len(operation_id) > 128 or len(transaction_id) > 128 or not (operation_id or transaction_id):
+            return Response(
+                {"detail": "A valid operation_id or transaction is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        record = (
+            X402Authorization.objects.filter(verification_id=operation_id).first()
+            if operation_id
+            else X402Authorization.objects.filter(transaction_hash=transaction_id).first()
+        )
+        if record is None:
+            return Response({"status": "not_found"})
+        network = str(record.payment_requirements.get("network") or configured_base_network())
+        if record.status == X402Authorization.Status.SETTLING and record.transaction_hash:
+            try:
+                configured = _configured(network)
+                chain_status = _transaction_status(configured.signer_for(network), record.transaction_hash, network)
+                if chain_status == "confirmed":
+                    updated = X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash=record.transaction_hash,
+                    ).update(
+                        status=X402Authorization.Status.SETTLED,
+                        settled_at=timezone.now(),
+                        settling_started_at=None,
+                    )
+                    if updated:
+                        record.status = X402Authorization.Status.SETTLED
+                    else:
+                        record.refresh_from_db()
+                elif chain_status == "failed":
+                    updated = X402Authorization.objects.filter(
+                        pk=record.pk,
+                        status=X402Authorization.Status.SETTLING,
+                        transaction_hash=record.transaction_hash,
+                    ).update(
+                        status=X402Authorization.Status.VERIFIED,
+                        transaction_hash=None,
+                        prepared_transaction=None,
+                        signer_nonce=None,
+                        settled_amount=None,
+                        transaction_broadcast_at=None,
+                        settling_started_at=None,
+                    )
+                    if updated:
+                        record.status = X402Authorization.Status.VERIFIED
+                        record.transaction_hash = None
+                    else:
+                        record.refresh_from_db()
+            except Exception as exc:
+                logger.warning("x402 receipt reconciliation failed: operation={} error={}", operation_id, exc)
+        response = {"status": record.status}
+        if record.status == X402Authorization.Status.SETTLED:
+            response["receipt"] = SettleResponse(
+                success=True,
+                payer=record.payer,
+                transaction=record.transaction_hash or "",
+                network=network,
+                amount=record.settled_amount or record.value,
+            ).model_dump(mode="json", by_alias=True, exclude_none=True)
+        elif record.transaction_hash:
+            response["transaction"] = record.transaction_hash
+        return Response(response)
+
+
 class X402SettleView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -665,6 +802,10 @@ class X402SettleView(APIView):
         except (ValidationError, ValueError) as exc:
             return _failed_settle(str(exc))
 
+        settlement_id = request.headers.get("X-Idempotency-Key", "").strip()
+        if len(settlement_id) > 128:
+            return _failed_settle("X-Idempotency-Key is too long.")
+
         try:
             record = X402Authorization.objects.get(nonce=identity.nonce)
         except X402Authorization.DoesNotExist:
@@ -682,23 +823,18 @@ class X402SettleView(APIView):
         network = str(incoming_requirements.get("network"))
         if not requirements_match or incoming_payload != record.payment_payload:
             return _failed_settle("Payment payload or requirements do not match verification.", network=network)
+        same_operation = bool(settlement_id) and settlement_id == record.verification_id
+        # During the compatibility rollout, legacy callers may omit the key. A
+        # supplied conflicting key is always rejected; matching keyed retries
+        # gain receipt replay on every rail.
+        if settlement_id and not same_operation:
+            return _failed_settle("Settlement idempotency key does not match verification.", network=network)
         if is_recurring_payload(incoming_payload):
             return _settle_recurring(record, identity, settled_amount, network)
         if record.status == X402Authorization.Status.SETTLED:
-            if network.startswith("solana:"):
-                return _failed_settle(
-                    ERR_DUPLICATE_SETTLEMENT,
-                    network=network,
-                )
-            return _response(
-                SettleResponse(
-                    success=True,
-                    payer=record.payer,
-                    transaction=record.transaction_hash or "",
-                    network=network,
-                    amount=record.settled_amount or record.value,
-                )
-            )
+            if network.startswith("solana:") and not same_operation:
+                return _failed_settle(ERR_DUPLICATE_SETTLEMENT, network=network)
+            return _settled_receipt(record, network)
 
         if record.transaction_hash:
             try:
@@ -722,15 +858,7 @@ class X402SettleView(APIView):
                         record.transaction_hash,
                         exc,
                     )
-                return _response(
-                    SettleResponse(
-                        success=True,
-                        payer=record.payer,
-                        transaction=record.transaction_hash,
-                        network=network,
-                        amount=record.settled_amount or record.value,
-                    )
-                )
+                return _settled_receipt(record, network)
             if transaction_status == "failed":
                 cleared = X402Authorization.objects.filter(
                     pk=record.pk,
@@ -830,10 +958,11 @@ class X402SettleView(APIView):
             return _failed_settle("Facilitator settlement failed.", record.transaction_hash or "", network)
 
         if result.success:
+            transaction_hash = result.transaction or record.transaction_hash or ""
             try:
                 X402Authorization.objects.filter(pk=record.pk).update(
                     status=X402Authorization.Status.SETTLED,
-                    transaction_hash=result.transaction,
+                    transaction_hash=transaction_hash,
                     settled_amount=settled_amount,
                     settled_at=timezone.now(),
                     settling_started_at=None,
@@ -842,9 +971,15 @@ class X402SettleView(APIView):
                 logger.error(
                     "successful x402 settlement final-state persistence failed: nonce={} tx={} error={}",
                     identity.nonce,
-                    result.transaction or record.transaction_hash,
+                    transaction_hash,
                     exc,
                 )
+            return _settled_receipt(
+                record,
+                network,
+                transaction=transaction_hash,
+                amount=settled_amount,
+            )
         elif record.transaction_hash is None:
             X402Authorization.objects.filter(
                 pk=record.pk,

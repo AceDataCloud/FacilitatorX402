@@ -1,3 +1,4 @@
+import copy
 import json
 import threading
 import time
@@ -44,12 +45,13 @@ class FakeFacilitator:
         assert record.transaction_hash == tx_hash
         assert record.prepared_transaction == "deadbeef"
         assert record.signer_nonce == 7
+        # The official SDK permits amount=None. The view must normalize the
+        # response from the verified requirements before returning it.
         return SettleResponse(
             success=True,
             payer=(payload.payload.get("authorization") or payload.payload.get("permit2Authorization"))["from"],
             transaction=tx_hash,
             network=str(requirements.network),
-            amount=requirements.amount,
         )
 
 
@@ -107,12 +109,15 @@ class OfficialViewTests(TestCase):
         self.settings_override.enable()
         self.addCleanup(self.settings_override.disable)
 
-    def _settle(self, body):  # noqa: ANN001, ANN201
+    def _settle(self, body, idempotency_key=""):  # noqa: ANN001, ANN201
+        headers = {"HTTP_X_SETTLEMENT_TOKEN": "internal-secret"}
+        if idempotency_key:
+            headers["HTTP_X_IDEMPOTENCY_KEY"] = idempotency_key
         return self.client.post(
             reverse("x402:settle"),
             data=json.dumps(body),
             content_type="application/json",
-            HTTP_X_SETTLEMENT_TOKEN="internal-secret",
+            **headers,
         )
 
     @override_settings(X402_BASE_NETWORK="eip155:84532")
@@ -330,14 +335,46 @@ class OfficialViewTests(TestCase):
         self.assertEqual(factory.call_count, 2)
 
     @patch("x402f.views_official.build_configured_facilitator")
+    def test_verify_retry_rejects_expired_reservation(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        response = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(self.body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="expired-operation",
+        )
+        self.assertTrue(response.json()["isValid"])
+        X402Authorization.objects.update(valid_before=timezone.now() - timedelta(seconds=1))
+
+        retry = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(self.body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="expired-operation",
+        )
+
+        self.assertFalse(retry.json()["isValid"])
+        self.assertIn("conflicts", retry.json()["invalidReason"])
+
+    @patch("x402f.views_official.build_configured_facilitator")
     def test_verify_rejects_identical_authorization_after_settlement(self, factory) -> None:
         factory.side_effect = self._facilitator_factory
         body = self.body
-        first = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
+        first = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="settled-operation",
+        )
         self.assertTrue(first.json()["isValid"])
         X402Authorization.objects.update(status=X402Authorization.Status.SETTLED)
 
-        second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
+        second = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="settled-operation",
+        )
 
         self.assertFalse(second.json()["isValid"])
         self.assertIn("conflicts", second.json()["invalidReason"])
@@ -472,6 +509,276 @@ class OfficialViewTests(TestCase):
         record = X402Authorization.objects.get()
         self.assertEqual(record.status, X402Authorization.Status.SETTLED)
         self.assertEqual(factory.call_count, 2)
+
+    def test_receipt_endpoint_requires_internal_token(self) -> None:
+        response = self.client.get(reverse("x402:receipt"), {"operation_id": "order-1"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_receipt_endpoint_returns_not_found_without_http_error(self) -> None:
+        response = self.client.get(
+            reverse("x402:receipt"),
+            {"operation_id": "missing"},
+            HTTP_X_SETTLEMENT_TOKEN="internal-secret",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "not_found"})
+
+    def test_receipt_endpoint_returns_complete_settled_receipt(self) -> None:
+        body = self.body
+        X402Authorization.objects.create(
+            nonce="receipt",
+            verification_id="order-1",
+            payer=body["paymentPayload"]["payload"]["authorization"]["from"],
+            pay_to=body["paymentRequirements"]["payTo"],
+            value=body["paymentRequirements"]["amount"],
+            valid_after=timezone.now() - timedelta(minutes=1),
+            valid_before=timezone.now() + timedelta(minutes=1),
+            signature="signature",
+            payment_requirements=body["paymentRequirements"],
+            payment_payload=body["paymentPayload"],
+            status=X402Authorization.Status.SETTLED,
+            transaction_hash="0x" + "ab" * 32,
+            settled_amount=body["paymentRequirements"]["amount"],
+        )
+
+        response = self.client.get(
+            reverse("x402:receipt"),
+            {"operation_id": "order-1"},
+            HTTP_X_SETTLEMENT_TOKEN="internal-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "settled")
+        self.assertEqual(response.json()["receipt"]["amount"], body["paymentRequirements"]["amount"])
+        self.assertEqual(response.json()["receipt"]["transaction"], "0x" + "ab" * 32)
+
+        fallback = self.client.get(
+            reverse("x402:receipt"),
+            {"transaction": "0x" + "ab" * 32},
+            HTTP_X_SETTLEMENT_TOKEN="internal-secret",
+        )
+        self.assertEqual(fallback.json()["status"], "settled")
+        self.assertEqual(fallback.json()["receipt"]["amount"], body["paymentRequirements"]["amount"])
+
+    @patch("x402f.views_official._transaction_status", return_value="confirmed")
+    @patch("x402f.views_official._configured")
+    def test_receipt_endpoint_reconciles_confirmed_transaction(self, configured, _status) -> None:
+        configured.return_value = SimpleNamespace(signer_for=lambda _network: SimpleNamespace())
+        body = self.body
+        X402Authorization.objects.create(
+            nonce="receipt-pending",
+            verification_id="order-1",
+            payer=body["paymentPayload"]["payload"]["authorization"]["from"],
+            pay_to=body["paymentRequirements"]["payTo"],
+            value=body["paymentRequirements"]["amount"],
+            valid_after=timezone.now() - timedelta(minutes=1),
+            valid_before=timezone.now() + timedelta(minutes=1),
+            signature="signature",
+            payment_requirements=body["paymentRequirements"],
+            payment_payload=body["paymentPayload"],
+            status=X402Authorization.Status.SETTLING,
+            transaction_hash="0x" + "cd" * 32,
+            settled_amount=body["paymentRequirements"]["amount"],
+        )
+
+        response = self.client.get(
+            reverse("x402:receipt"),
+            {"operation_id": "order-1"},
+            HTTP_X_SETTLEMENT_TOKEN="internal-secret",
+        )
+
+        self.assertEqual(response.json()["status"], "settled")
+        self.assertEqual(response.json()["receipt"]["transaction"], "0x" + "cd" * 32)
+
+    @patch("x402f.views_official._signer_lock", return_value=nullcontext())
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_first_exact_settlement_normalizes_missing_amount(self, factory, _lock) -> None:
+        factory.side_effect = self._facilitator_factory
+        body = self.body
+        verify = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+        self.assertTrue(verify.json()["isValid"])
+
+        response = self._settle(body, "order-1")
+
+        self.assertTrue(response.json()["success"])
+        self.assertEqual(response.json()["amount"], body["paymentRequirements"]["amount"])
+        self.assertEqual(response.json()["network"], body["paymentRequirements"]["network"])
+        self.assertTrue(response.json()["transaction"])
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_expired_unsettled_operation_can_bind_fresh_authorization(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        first = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(self.body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+        self.assertTrue(first.json()["isValid"])
+        old = X402Authorization.objects.get()
+        X402Authorization.objects.update(valid_before=timezone.now() - timedelta(seconds=1))
+
+        changed = copy.deepcopy(self.body)
+        changed["paymentPayload"]["payload"]["authorization"]["nonce"] = "0x" + "22" * 32
+        changed["paymentPayload"]["payload"]["signature"] = "0x" + "33" * 65
+        second = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(changed),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+
+        self.assertTrue(second.json()["isValid"])
+        self.assertEqual(X402Authorization.objects.count(), 1)
+        fresh = X402Authorization.objects.get()
+        self.assertNotEqual(fresh.pk, old.pk)
+        self.assertEqual(fresh.verification_id, "order-1")
+        self.assertNotEqual(fresh.nonce, old.nonce)
+        self.assertEqual(
+            fresh.payment_payload["payload"]["authorization"]["nonce"],
+            changed["paymentPayload"]["payload"]["authorization"]["nonce"],
+        )
+
+    def test_operation_with_transaction_evidence_is_never_replaceable(self) -> None:
+        body = self.body
+        record = X402Authorization.objects.create(
+            nonce="0x" + "44" * 32,
+            verification_id="order-1",
+            payer=body["paymentPayload"]["payload"]["authorization"]["from"],
+            pay_to=body["paymentRequirements"]["payTo"],
+            value=body["paymentRequirements"]["amount"],
+            valid_after=timezone.now() - timedelta(minutes=2),
+            valid_before=timezone.now() - timedelta(minutes=1),
+            signature="0x" + "55" * 65,
+            payment_requirements=body["paymentRequirements"],
+            payment_payload=body["paymentPayload"],
+            status=X402Authorization.Status.VERIFIED,
+            transaction_hash="0x" + "ab" * 32,
+        )
+
+        changed = copy.deepcopy(body)
+        changed["paymentPayload"]["payload"]["authorization"]["nonce"] = "0x" + "66" * 32
+        changed["paymentPayload"]["payload"]["signature"] = "0x" + "77" * 65
+        response = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(changed),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+
+        self.assertFalse(response.json()["isValid"])
+        record.refresh_from_db()
+        self.assertEqual(record.transaction_hash, "0x" + "ab" * 32)
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_active_operation_cannot_bind_fresh_authorization(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        first = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(self.body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+        self.assertTrue(first.json()["isValid"])
+        X402Authorization.objects.update(valid_before=timezone.now() + timedelta(minutes=5))
+
+        changed = copy.deepcopy(self.body)
+        changed["paymentPayload"]["payload"]["authorization"]["nonce"] = "0x" + "22" * 32
+        changed["paymentPayload"]["payload"]["signature"] = "0x" + "33" * 65
+        second = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(changed),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+
+        self.assertFalse(second.json()["isValid"])
+        self.assertIn("Idempotency-Key conflicts", second.json()["invalidReason"])
+        self.assertEqual(X402Authorization.objects.count(), 1)
+
+    @patch("x402f.views_official._signer_lock", return_value=nullcontext())
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_legacy_settle_without_key_remains_compatible(self, factory, _lock) -> None:
+        factory.side_effect = self._facilitator_factory
+        verify = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(self.body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+        self.assertTrue(verify.json()["isValid"])
+
+        response = self._settle(self.body)
+
+        self.assertTrue(response.json()["success"])
+        self.assertEqual(response.json()["amount"], self.body["paymentRequirements"]["amount"])
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_settle_requires_verification_operation_key(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        verify = self.client.post(
+            reverse("x402:verify"),
+            data=json.dumps(self.body),
+            content_type="application/json",
+            HTTP_X_IDEMPOTENCY_KEY="order-1",
+        )
+        self.assertTrue(verify.json()["isValid"])
+
+        response = self._settle(self.body, "order-2")
+
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(
+            response.json()["errorReason"],
+            "Settlement idempotency key does not match verification.",
+        )
+
+    def test_settled_solana_payment_replays_same_operation(self) -> None:
+        body = self.body
+        network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        body["paymentPayload"]["accepted"]["network"] = network
+        body["paymentRequirements"]["network"] = network
+        body["paymentRequirements"]["asset"] = "mint"
+        body["paymentRequirements"]["payTo"] = "payee"
+        body["paymentPayload"]["payload"] = {"transaction": "base64-transaction"}
+        X402Authorization.objects.create(
+            nonce=f"svm:{network}:message-hash",
+            verification_id="order-1",
+            payer="payer-address",
+            pay_to="payee",
+            value="1",
+            valid_after=timezone.now(),
+            valid_before=timezone.now() + timedelta(minutes=1),
+            signature="payload-hash",
+            payment_requirements=body["paymentRequirements"],
+            payment_payload=body["paymentPayload"],
+            scheme="exact",
+            status=X402Authorization.Status.SETTLED,
+            transaction_hash="solana-signature",
+            settled_amount="1",
+        )
+
+        with (
+            override_settings(
+                X402_SOLANA_MAINNET_ENABLED=True,
+                X402_SOLANA_ASSET="mint",
+                X402_SOLANA_PAY_TO="payee",
+            ),
+            patch("x402f.views_official.decode_transaction_from_payload", return_value=SimpleNamespace()),
+            patch("x402f.views_official.transaction_message_hash", return_value="message-hash"),
+            patch("x402f.views_official.get_token_payer_from_transaction", return_value="payer-address"),
+            patch("x402f.views_official.hashlib.sha256") as sha256,
+        ):
+            sha256.return_value.hexdigest.return_value = "payload-hash"
+            response = self._settle(body, "order-1")
+
+        self.assertTrue(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], "solana-signature")
+        self.assertEqual(response.json()["amount"], "1")
 
     def test_settled_solana_payment_rejects_duplicate_settlement(self) -> None:
         body = self.body
