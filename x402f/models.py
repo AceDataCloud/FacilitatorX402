@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -41,6 +42,13 @@ class X402Authorization(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["verification_id"],
+                condition=Q(verification_id__isnull=False),
+                name="uniq_x402_verification_operation",
+            )
+        ]
 
     def mark_settled(self, tx_hash: str, settled_amount: str | None = None) -> None:
         self.status = self.Status.SETTLED
