@@ -226,7 +226,7 @@ class OfficialViewTests(TestCase):
         )
 
         self.assertFalse(response.json()["isValid"])
-        self.assertEqual(response.json()["invalidReason"], "invalid_payment_request")
+        self.assertEqual(response.json()["invalidReason"], "payment_failed")
 
     def test_settle_authentication_failures_use_official_response_schema(self) -> None:
         for headers in ({}, {"HTTP_X_SETTLEMENT_TOKEN": "wrong-secret"}):
@@ -238,15 +238,15 @@ class OfficialViewTests(TestCase):
             )
 
             self.assertEqual(response.status_code, 403)
-            self.assertEqual(
-                response.json(),
-                {
-                    "success": False,
-                    "errorReason": "Unauthorized settlement caller.",
-                    "transaction": "",
-                    "network": "eip155:8453",
-                },
-            )
+            body = response.json()
+            self.assertEqual(body["success"], False)
+            self.assertEqual(body["errorReason"], "settlement_failed")
+            self.assertEqual(body["transaction"], "")
+            self.assertEqual(body["network"], "eip155:8453")
+            descriptor = body["extensions"]["acedatacloud"]["paymentError"]
+            self.assertEqual(descriptor["code"], "settlement_failed")
+            self.assertEqual(descriptor["stage"], "settle")
+            self.assertNotIn("charged", descriptor)
 
     @patch("x402f.views_official.build_configured_facilitator")
     def test_verify_reserves_official_authorization_and_accepts_identical_retry(self, factory) -> None:
@@ -303,7 +303,7 @@ class OfficialViewTests(TestCase):
 
         self.assertTrue(first.json()["isValid"])
         self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "authorization_conflict")
+        self.assertEqual(second.json()["invalidReason"], "payment_failed")
 
     @patch("x402f.views_official.build_configured_facilitator")
     def test_identical_verify_retry_uses_reservation_when_facilitator_is_unavailable(self, factory) -> None:
@@ -326,7 +326,7 @@ class OfficialViewTests(TestCase):
         )
 
         self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "authorization_revalidation_failed")
+        self.assertEqual(second.json()["invalidReason"], "payment_failed")
         self.assertEqual(factory.call_count, 2)
 
     @patch("x402f.views_official.build_configured_facilitator")
@@ -340,7 +340,7 @@ class OfficialViewTests(TestCase):
         second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
 
         self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "authorization_conflict")
+        self.assertEqual(second.json()["invalidReason"], "payment_failed")
 
     def test_sqlite_signer_lock_serializes_same_network(self) -> None:
         active = 0
@@ -377,7 +377,7 @@ class OfficialViewTests(TestCase):
         second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
 
         self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "authorization_conflict")
+        self.assertEqual(second.json()["invalidReason"], "payment_failed")
         self.assertEqual(X402Authorization.objects.count(), 1)
 
     @override_settings(X402_BASE_UPTO_ENABLED=True)
@@ -401,7 +401,7 @@ class OfficialViewTests(TestCase):
         body["paymentRequirements"]["amount"] = "1001"
         rejected = self._settle(body)
         self.assertFalse(rejected.json()["success"])
-        self.assertEqual(rejected.json()["errorReason"], "payment_mismatch")
+        self.assertEqual(rejected.json()["errorReason"], "settlement_failed")
 
     def test_evm_signer_nonce_seed_is_scoped_by_network(self) -> None:
         X402Authorization.objects.create(
@@ -512,7 +512,7 @@ class OfficialViewTests(TestCase):
             response = self._settle(body)
 
         self.assertFalse(response.json()["success"])
-        self.assertEqual(response.json()["errorReason"], "duplicate_settlement")
+        self.assertEqual(response.json()["errorReason"], "payment_failed")
         self.assertEqual(response.json()["transaction"], "")
 
     @patch("x402f.views_official.build_configured_facilitator")
@@ -528,7 +528,7 @@ class OfficialViewTests(TestCase):
         self.assertFalse(response.json()["success"])
         self.assertEqual(
             response.json()["errorReason"],
-            "payment_mismatch",
+            "settlement_failed",
         )
 
     @patch("x402f.views_official.build_configured_facilitator")

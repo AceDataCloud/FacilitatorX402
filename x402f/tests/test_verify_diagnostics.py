@@ -66,7 +66,7 @@ def test_http_response_omits_raw_verify_diagnostic():
             payer="payer",
         )
     )
-    assert response.data["invalidReason"] == "transaction_simulation_failed"
+    assert response.data["invalidReason"] == "payment_failed"
     assert "invalidMessage" not in response.data
     assert "secret.example" not in str(response.data)
 
@@ -85,6 +85,6 @@ def test_http_response_omits_raw_settlement_diagnostic():
             network="eip155:8453",
         )
     )
-    assert response.data["errorReason"] == "facilitator_settlement_failed"
+    assert response.data["errorReason"] == "settlement_failed"
     assert "errorMessage" not in response.data
     assert "internal details" not in str(response.data)

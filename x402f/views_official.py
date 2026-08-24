@@ -40,6 +40,7 @@ from x402f.official import (
     configured_base_network,
     configured_supported_response,
 )
+from x402f.payment_errors import payment_error, payment_error_extension
 from x402f.svm_recurring import (
     PermanentRecurringAuthorizationError,
     RecurringAuthorizationError,
@@ -137,11 +138,25 @@ def _configured(
 
 
 def _response(model: BaseModel, status_code: int = status.HTTP_200_OK) -> Response:
+    if isinstance(model, VerifyResponse) and not model.is_valid:
+        descriptor = payment_error(model.invalid_reason, stage="verify", charged=False)
+        model = model.model_copy(
+            update={
+                "invalid_reason": descriptor["code"],
+                "extensions": payment_error_extension(descriptor),
+            }
+        )
+    elif isinstance(model, SettleResponse) and not model.success:
+        descriptor = payment_error(model.error_reason, stage="settle", network=str(model.network))
+        model = model.model_copy(
+            update={
+                "error_reason": descriptor["code"],
+                "extensions": payment_error_extension(descriptor),
+            }
+        )
     data = model.model_dump(mode="json", by_alias=True, exclude_none=True)
-    if isinstance(model, VerifyResponse):
-        data.pop("invalidMessage", None)
-    if isinstance(model, SettleResponse):
-        data.pop("errorMessage", None)
+    data.pop("invalidMessage", None)
+    data.pop("errorMessage", None)
     return Response(data, status=status_code)
 
 
@@ -504,12 +519,9 @@ class X402VerifyView(APIView):
             return _invalid_verify("authorization_conflict")
         except Exception as exc:
             logger.error("official x402 reservation failed: nonce={} error_type={}", identity.nonce, type(exc).__name__)
-            return Response(
-                VerifyResponse(
-                    is_valid=False,
-                    invalid_reason="authorization_reservation_failed",
-                ).model_dump(mode="json", by_alias=True, exclude_none=True),
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            return _response(
+                VerifyResponse(is_valid=False, invalid_reason="authorization_reservation_failed"),
+                status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return _response(result)
 
@@ -688,15 +700,15 @@ class X402SettleView(APIView):
         supplied_token = request.headers.get("X-Settlement-Token", "")
         if not expected_token or not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
             return _failed_settle(
-                "Unauthorized settlement caller.",
+                "invalid_payment_request",
                 status_code=status.HTTP_403_FORBIDDEN,
             )
         try:
             settle_request = _parse_request(request.data, SettleRequest)
             _validate_policy(settle_request)
             identity = _payment_identity(settle_request)
-        except (ValidationError, ValueError) as exc:
-            return _failed_settle(str(exc))
+        except (ValidationError, ValueError):
+            return _failed_settle("invalid_payment_request")
 
         try:
             record = X402Authorization.objects.get(nonce=identity.nonce)
