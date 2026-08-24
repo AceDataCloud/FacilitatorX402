@@ -40,6 +40,7 @@ from x402f.official import (
     configured_base_network,
     configured_supported_response,
 )
+from x402f.payment_errors import payment_error, payment_error_extension
 from x402f.svm_recurring import (
     PermanentRecurringAuthorizationError,
     RecurringAuthorizationError,
@@ -137,7 +138,26 @@ def _configured(
 
 
 def _response(model: BaseModel, status_code: int = status.HTTP_200_OK) -> Response:
-    return Response(model.model_dump(mode="json", by_alias=True, exclude_none=True), status=status_code)
+    if isinstance(model, VerifyResponse) and not model.is_valid:
+        descriptor = payment_error(model.invalid_reason, stage="verify", charged=False)
+        model = model.model_copy(
+            update={
+                "invalid_reason": descriptor["code"],
+                "extensions": payment_error_extension(descriptor),
+            }
+        )
+    elif isinstance(model, SettleResponse) and not model.success:
+        descriptor = payment_error(model.error_reason, stage="settle", network=str(model.network))
+        model = model.model_copy(
+            update={
+                "error_reason": descriptor["code"],
+                "extensions": payment_error_extension(descriptor),
+            }
+        )
+    data = model.model_dump(mode="json", by_alias=True, exclude_none=True)
+    data.pop("invalidMessage", None)
+    data.pop("errorMessage", None)
+    return Response(data, status=status_code)
 
 
 def _parse_request(data: dict, model: type[RequestModel]) -> RequestModel:
@@ -351,11 +371,12 @@ def _verify_request(verify_request: VerifyRequest, configured: ConfiguredFacilit
         return configured.facilitator.verify(verify_request.payment_payload, verify_request.payment_requirements)
     amount = str(verify_request.payment_requirements.amount)
     if not amount.isdigit():
-        return VerifyResponse(is_valid=False, invalid_reason="Recurring authorization amount is invalid.")
+        return VerifyResponse(is_valid=False, invalid_reason="recurring_authorization_amount_invalid")
     try:
         delegation, _ = verify_recurring(serialized_payload, int(amount))
     except RecurringAuthorizationError as exc:
-        return VerifyResponse(is_valid=False, invalid_reason=str(exc))
+        logger.warning("recurring authorization rejected: error_type={}", type(exc).__name__)
+        return VerifyResponse(is_valid=False, invalid_reason="recurring_authorization_invalid")
     return VerifyResponse(is_valid=True, payer=delegation.wallet)
 
 
@@ -384,7 +405,7 @@ class X402SupportedView(APIView):
         try:
             return _response(configured_supported_response())
         except Exception as exc:
-            logger.error("official x402 supported failed: {}", exc)
+            logger.error("official x402 supported failed: error_type={}", type(exc).__name__)
             return Response({"error": "Facilitator is not configured."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -398,12 +419,13 @@ class X402VerifyView(APIView):
             _validate_policy(verify_request)
             identity = _payment_identity(verify_request)
         except (ValidationError, ValueError) as exc:
-            return _invalid_verify(str(exc))
+            logger.warning("official x402 request rejected: error_type={}", type(exc).__name__)
+            return _invalid_verify("invalid_payment_request")
 
         requirements = verify_request.payment_requirements
         verification_id = request.headers.get("X-Idempotency-Key", "").strip()
         if len(verification_id) > 128:
-            return _invalid_verify("X-Idempotency-Key is too long.")
+            return _invalid_verify("invalid_idempotency_key")
         serialized_requirements = requirements.model_dump(mode="json", by_alias=True)
         serialized_payload = verify_request.payment_payload.model_dump(mode="json", by_alias=True)
         existing = X402Authorization.objects.filter(nonce=identity.nonce).first()
@@ -426,26 +448,23 @@ class X402VerifyView(APIView):
                         configured = _configured(str(requirements.network))
                         result = _verify_request(verify_request, configured)
                 except Exception:
-                    return _invalid_verify("Unable to revalidate reserved payment authorization.")
+                    return _invalid_verify("authorization_revalidation_failed")
                 return _response(result)
-            return _invalid_verify("Authorization nonce conflicts with a different payment.")
+            return _invalid_verify("authorization_conflict")
 
         try:
             configured = _configured(str(requirements.network))
             result = _verify_request(verify_request, configured)
         except Exception as exc:
-            logger.error("official x402 verify failed: {}", exc)
-            return _invalid_verify("Facilitator verification failed.")
+            logger.error("official x402 verify failed: error_type={}", type(exc).__name__)
+            return _invalid_verify("facilitator_verification_failed")
         if not result.is_valid:
-            # Rejections were previously returned without a trace, so a production
-            # verify failure left nothing to debug from: the HTTP response drops
-            # invalid_message and the payload is never persisted on this path.
+            # Keep rejection logs structured; raw diagnostics stay inside the mechanism.
             logger.warning(
-                "official x402 verify rejected: reason={} message={} payer={} network={} "
+                "official x402 verify rejected: reason={} payer={} network={} "
                 "scheme={} asset={} amount={} valid_after={} valid_before={} nonce={} "
                 "signature_len={} has_code={}",
                 result.invalid_reason,
-                result.invalid_message,
                 result.payer or identity.payer,
                 requirements.network,
                 requirements.scheme,
@@ -497,15 +516,12 @@ class X402VerifyView(APIView):
                 and existing.signature == identity.signature
             ):
                 return _response(result)
-            return _invalid_verify("Authorization nonce conflicts with a different payment.")
+            return _invalid_verify("authorization_conflict")
         except Exception as exc:
-            logger.error("official x402 reservation failed: nonce={} error={}", identity.nonce, exc)
-            return Response(
-                VerifyResponse(
-                    is_valid=False,
-                    invalid_reason="Unable to reserve payment authorization.",
-                ).model_dump(mode="json", by_alias=True, exclude_none=True),
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            logger.error("official x402 reservation failed: nonce={} error_type={}", identity.nonce, type(exc).__name__)
+            return _response(
+                VerifyResponse(is_valid=False, invalid_reason="authorization_reservation_failed"),
+                status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return _response(result)
 
@@ -684,24 +700,28 @@ class X402SettleView(APIView):
         supplied_token = request.headers.get("X-Settlement-Token", "")
         if not expected_token or not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
             return _failed_settle(
-                "Unauthorized settlement caller.",
+                "invalid_payment_request",
                 status_code=status.HTTP_403_FORBIDDEN,
             )
         try:
             settle_request = _parse_request(request.data, SettleRequest)
             _validate_policy(settle_request)
             identity = _payment_identity(settle_request)
-        except (ValidationError, ValueError) as exc:
-            return _failed_settle(str(exc))
+        except (ValidationError, ValueError):
+            return _failed_settle("invalid_payment_request")
 
         try:
             record = X402Authorization.objects.get(nonce=identity.nonce)
         except X402Authorization.DoesNotExist:
-            return _failed_settle("Payment authorization was not verified.")
+            return _failed_settle("authorization_not_verified")
         except Exception as exc:
-            logger.error("official x402 settlement load failed: nonce={} error={}", identity.nonce, exc)
+            logger.error(
+                "official x402 settlement load failed: nonce={} error_type={}",
+                identity.nonce,
+                type(exc).__name__,
+            )
             return Response(
-                _failed_settle("Unable to load payment authorization.").data,
+                _failed_settle("authorization_load_failed").data,
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -710,7 +730,7 @@ class X402SettleView(APIView):
         requirements_match, settled_amount = _settlement_requirements_match(record, incoming_requirements)
         network = str(incoming_requirements.get("network"))
         if not requirements_match or incoming_payload != record.payment_payload:
-            return _failed_settle("Payment payload or requirements do not match verification.", network=network)
+            return _failed_settle("payment_mismatch", network=network)
         if is_recurring_payload(incoming_payload):
             return _settle_recurring(record, identity, settled_amount, network)
         if record.status == X402Authorization.Status.SETTLED:
@@ -735,8 +755,12 @@ class X402SettleView(APIView):
                 signer = configured.signer_for(network)
                 transaction_status = _transaction_status(signer, record.transaction_hash, network)
             except Exception as exc:
-                logger.error("official x402 reconciliation failed: nonce={} error={}", identity.nonce, exc)
-                return _failed_settle("Settlement transaction status is unavailable.", record.transaction_hash, network)
+                logger.error(
+                    "official x402 reconciliation failed: nonce={} error_type={}",
+                    identity.nonce,
+                    type(exc).__name__,
+                )
+                return _failed_settle("settlement_status_unavailable", record.transaction_hash, network)
             if transaction_status == "confirmed":
                 try:
                     X402Authorization.objects.filter(pk=record.pk).update(
@@ -746,7 +770,7 @@ class X402SettleView(APIView):
                     )
                 except Exception as exc:
                     logger.error(
-                        "confirmed x402 settlement final-state persistence failed: nonce={} tx={} error={}",
+                        "confirmed x402 settlement final-state persistence failed: nonce={} tx={} error_type={}",
                         identity.nonce,
                         record.transaction_hash,
                         exc,
@@ -775,8 +799,8 @@ class X402SettleView(APIView):
                     settling_started_at=None,
                 )
                 if cleared != 1:
-                    return _failed_settle("Settlement state changed; retry.", record.transaction_hash, network)
-                return _failed_settle("Settlement transaction failed on-chain.", record.transaction_hash, network)
+                    return _failed_settle("settlement_state_changed", record.transaction_hash, network)
+                return _failed_settle("settlement_transaction_failed", record.transaction_hash, network)
             if record.prepared_transaction:
                 try:
                     with _signer_lock(network):
@@ -786,11 +810,11 @@ class X402SettleView(APIView):
                         _broadcast_prepared(signer, record.prepared_transaction, network)
                 except Exception as exc:
                     logger.warning(
-                        "official x402 prepared transaction rebroadcast failed: nonce={} error={}",
+                        "official x402 prepared transaction rebroadcast failed: nonce={} error_type={}",
                         identity.nonce,
                         exc,
                     )
-            return _failed_settle("Settlement transaction is pending confirmation.", record.transaction_hash, network)
+            return _failed_settle("settlement_pending", record.transaction_hash, network)
 
         lease_cutoff = timezone.now() - timedelta(seconds=settings.X402_SETTLEMENT_LEASE_SECONDS)
         claim_started_at = timezone.now()
@@ -803,7 +827,7 @@ class X402SettleView(APIView):
             .update(status=X402Authorization.Status.SETTLING, settling_started_at=claim_started_at)
         )
         if claimed != 1:
-            return _failed_settle("Settlement is already in progress.", network=network)
+            return _failed_settle("settlement_in_progress", network=network)
         if record.scheme == "upto":
             updated = X402Authorization.objects.filter(
                 pk=record.pk,
@@ -811,7 +835,7 @@ class X402SettleView(APIView):
                 settling_started_at=claim_started_at,
             ).update(settled_amount=settled_amount)
             if updated != 1:
-                return _failed_settle("Unable to persist upto settlement amount.", network=network)
+                return _failed_settle("settlement_persist_failed", network=network)
             record.settled_amount = settled_amount
 
         def persist_prepared_hash(tx_hash: str, raw_transaction: str, signer_nonce: int | None) -> None:
@@ -848,7 +872,7 @@ class X402SettleView(APIView):
                     settle_request.payment_requirements,
                 )
         except Exception as exc:
-            logger.error("official x402 settlement failed: nonce={} error={}", identity.nonce, exc)
+            logger.error("official x402 settlement failed: nonce={} error_type={}", identity.nonce, type(exc).__name__)
             if record.transaction_hash is None:
                 X402Authorization.objects.filter(
                     pk=record.pk,
@@ -856,7 +880,7 @@ class X402SettleView(APIView):
                     transaction_hash__isnull=True,
                     settling_started_at=claim_started_at,
                 ).update(status=X402Authorization.Status.VERIFIED, settling_started_at=None, settled_amount=None)
-            return _failed_settle("Facilitator settlement failed.", record.transaction_hash or "", network)
+            return _failed_settle("facilitator_settlement_failed", record.transaction_hash or "", network)
 
         if result.success:
             try:
@@ -869,7 +893,7 @@ class X402SettleView(APIView):
                 )
             except Exception as exc:
                 logger.error(
-                    "successful x402 settlement final-state persistence failed: nonce={} tx={} error={}",
+                    "successful x402 settlement final-state persistence failed: nonce={} tx={} error_type={}",
                     identity.nonce,
                     result.transaction or record.transaction_hash,
                     exc,

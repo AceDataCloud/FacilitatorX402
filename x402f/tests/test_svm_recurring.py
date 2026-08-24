@@ -193,7 +193,10 @@ class SvmRecurringTests(TestCase):
         response = _settle_recurring(record, self._identity(), "100", NETWORK)
 
         self.assertFalse(response.data["success"])
-        self.assertIn("differs", response.data["errorReason"])
+        self.assertEqual(response.data["errorReason"], "settlement_failed")
+        descriptor = response.data["extensions"]["acedatacloud"]["paymentError"]
+        self.assertEqual(descriptor["stage"], "settle")
+        self.assertNotIn("charged", descriptor)
 
     @patch("x402f.svm_recurring._rpc")
     def test_transaction_status_uses_confirmation_enum_and_history(self, rpc):

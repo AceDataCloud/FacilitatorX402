@@ -38,6 +38,7 @@ ERR_AMOUNT_MISMATCH = "invalid_exact_svm_payload_amount_mismatch"
 ERR_FEE_PAYER_ACCOUNT_MISMATCH = "invalid_exact_svm_payload_fee_payer_account_mismatch"
 ERR_FEE_PAYER_IN_INSTRUCTION = "invalid_exact_svm_payload_fee_payer_in_instruction"
 ERR_SIGNER_SET_MISMATCH = "invalid_exact_svm_payload_signer_set_mismatch"
+ERR_PAYER_TOKEN_ACCOUNT_MISSING = "payer_token_account_missing"
 PHANTOM_FEE_PAYER_ASSERTION = bytes.fromhex("06040203000001000000000000000000")
 
 
@@ -185,12 +186,18 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
             signed = self._signer.sign_transaction(svm_payload.transaction, fee_payer, network)
             self._signer.simulate_transaction(signed, network)
         except Exception as exc:
-            return VerifyResponse(
-                is_valid=False,
-                invalid_reason=ERR_SIMULATION_FAILED,
-                invalid_message=str(exc),
-                payer=payer,
+            diagnostic = str(exc)
+            reason = (
+                ERR_PAYER_TOKEN_ACCOUNT_MISSING
+                if "TransactionErrorInstructionError((2, Fieldless(InvalidAccountData)))" in diagnostic
+                else ERR_SIMULATION_FAILED
             )
+            logger.warning(
+                "SVM payment simulation rejected: reason={} error_type={}",
+                reason,
+                type(exc).__name__,
+            )
+            return VerifyResponse(is_valid=False, invalid_reason=reason, payer=payer)
         return VerifyResponse(is_valid=True, payer=payer)
 
     @staticmethod

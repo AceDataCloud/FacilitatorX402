@@ -51,3 +51,40 @@ def test_degrades_to_unknown_instead_of_raising() -> None:
 def test_skips_solana_and_empty_payers() -> None:
     assert _payer_has_code("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", PAYER) == "n/a"
     assert _payer_has_code(EVM_NETWORK, "") == "n/a"
+
+
+def test_http_response_omits_raw_verify_diagnostic():
+    from x402.schemas import VerifyResponse
+
+    from x402f.views_official import _response
+
+    response = _response(
+        VerifyResponse(
+            is_valid=False,
+            invalid_reason="transaction_simulation_failed",
+            invalid_message="rpc=https://secret.example revert=raw",
+            payer="payer",
+        )
+    )
+    assert response.data["invalidReason"] == "payment_failed"
+    assert "invalidMessage" not in response.data
+    assert "secret.example" not in str(response.data)
+
+
+def test_http_response_omits_raw_settlement_diagnostic():
+    from x402.schemas import SettleResponse
+
+    from x402f.views_official import _response
+
+    response = _response(
+        SettleResponse(
+            success=False,
+            error_reason="facilitator_settlement_failed",
+            error_message="rpc body with internal details",
+            transaction="",
+            network="eip155:8453",
+        )
+    )
+    assert response.data["errorReason"] == "settlement_failed"
+    assert "errorMessage" not in response.data
+    assert "internal details" not in str(response.data)
