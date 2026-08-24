@@ -39,6 +39,7 @@ class FakeSigner:
     def __init__(self, fee_payer: Keypair) -> None:
         self.fee_payer = fee_payer
         self.simulated = False
+        self.simulation_error: Exception | None = None
 
     def get_addresses(self) -> list[str]:
         return [str(self.fee_payer.pubkey())]
@@ -52,6 +53,8 @@ class FakeSigner:
         assert transaction
         assert network == SOLANA_MAINNET_CAIP2
         self.simulated = True
+        if self.simulation_error:
+            raise self.simulation_error
 
 
 def lighthouse(
@@ -317,3 +320,27 @@ def test_rejects_facilitator_as_transfer_authority() -> None:
     assert result.is_valid is False
     assert result.invalid_reason == ERR_SIGNER_SET_MISMATCH
     assert signer.simulated is False
+
+
+@pytest.mark.parametrize(
+    ("diagnostic", "expected"),
+    [
+        (
+            "Simulation failed: TransactionErrorInstructionError((2, Fieldless(InvalidAccountData)))",
+            "payer_token_account_missing",
+        ),
+        (
+            "Simulation failed: TransactionErrorInstructionError((3, Fieldless(InvalidAccountData)))",
+            "transaction_simulation_failed",
+        ),
+    ],
+)
+def test_simulation_error_classification_is_narrow(diagnostic: str, expected: str) -> None:
+    payload, requirements, signer = payment()
+    signer.simulation_error = RuntimeError(diagnostic)
+
+    result = verify(payload, requirements, signer)
+
+    assert result.is_valid is False
+    assert result.invalid_reason == expected
+    assert result.invalid_message is None

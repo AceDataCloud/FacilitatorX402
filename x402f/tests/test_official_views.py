@@ -226,7 +226,7 @@ class OfficialViewTests(TestCase):
         )
 
         self.assertFalse(response.json()["isValid"])
-        self.assertIn("EIP-3009", response.json()["invalidReason"])
+        self.assertEqual(response.json()["invalidReason"], "invalid_payment_request")
 
     def test_settle_authentication_failures_use_official_response_schema(self) -> None:
         for headers in ({}, {"HTTP_X_SETTLEMENT_TOKEN": "wrong-secret"}):
@@ -303,7 +303,7 @@ class OfficialViewTests(TestCase):
 
         self.assertTrue(first.json()["isValid"])
         self.assertFalse(second.json()["isValid"])
-        self.assertIn("conflicts", second.json()["invalidReason"])
+        self.assertEqual(second.json()["invalidReason"], "authorization_conflict")
 
     @patch("x402f.views_official.build_configured_facilitator")
     def test_identical_verify_retry_uses_reservation_when_facilitator_is_unavailable(self, factory) -> None:
@@ -326,7 +326,7 @@ class OfficialViewTests(TestCase):
         )
 
         self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "Unable to revalidate reserved payment authorization.")
+        self.assertEqual(second.json()["invalidReason"], "authorization_revalidation_failed")
         self.assertEqual(factory.call_count, 2)
 
     @patch("x402f.views_official.build_configured_facilitator")
@@ -340,7 +340,7 @@ class OfficialViewTests(TestCase):
         second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
 
         self.assertFalse(second.json()["isValid"])
-        self.assertIn("conflicts", second.json()["invalidReason"])
+        self.assertEqual(second.json()["invalidReason"], "authorization_conflict")
 
     def test_sqlite_signer_lock_serializes_same_network(self) -> None:
         active = 0
@@ -377,7 +377,7 @@ class OfficialViewTests(TestCase):
         second = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
 
         self.assertFalse(second.json()["isValid"])
-        self.assertEqual(second.json()["invalidReason"], "Authorization nonce conflicts with a different payment.")
+        self.assertEqual(second.json()["invalidReason"], "authorization_conflict")
         self.assertEqual(X402Authorization.objects.count(), 1)
 
     @override_settings(X402_BASE_UPTO_ENABLED=True)
@@ -401,7 +401,7 @@ class OfficialViewTests(TestCase):
         body["paymentRequirements"]["amount"] = "1001"
         rejected = self._settle(body)
         self.assertFalse(rejected.json()["success"])
-        self.assertEqual(rejected.json()["errorReason"], "Payment payload or requirements do not match verification.")
+        self.assertEqual(rejected.json()["errorReason"], "payment_mismatch")
 
     def test_evm_signer_nonce_seed_is_scoped_by_network(self) -> None:
         X402Authorization.objects.create(
@@ -528,7 +528,7 @@ class OfficialViewTests(TestCase):
         self.assertFalse(response.json()["success"])
         self.assertEqual(
             response.json()["errorReason"],
-            "Payment payload or requirements do not match verification.",
+            "payment_mismatch",
         )
 
     @patch("x402f.views_official.build_configured_facilitator")
