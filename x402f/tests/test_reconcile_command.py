@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from x402f.management.commands.reconcile_x402 import reconcile_record
 from x402f.models import X402Authorization
+from x402f.svm_recurring import PROFILE
 
 
 def record(*, transaction_hash=None, prepared_transaction=None):  # noqa: ANN001
@@ -108,6 +109,51 @@ class ReconciliationCommandTests(TestCase):
         self.assertEqual(reconcile_record(pending), "rebroadcast")
         pending.refresh_from_db()
         self.assertEqual(pending.status, X402Authorization.Status.SETTLING)
+
+    @patch("x402f.views_official.send_recurring_prepared", return_value="solana-signature")
+    @patch("x402f.views_official.build_transfer_transaction", return_value=("solana-signature", "prepared"))
+    @patch("x402f.views_official.verify_recurring")
+    def test_recurring_hashless_claim_is_rebuilt_and_remains_settling(self, verify, build, send) -> None:
+        recurring = record()
+        recurring.payment_requirements = {"network": "solana:mainnet", "amount": "100"}
+        recurring.payment_payload = {
+            "payload": {
+                "authorizationProfile": PROFILE,
+                "delegation": "delegation",
+                "requestNonce": "request",
+            }
+        }
+        recurring.settled_amount = "75"
+        recurring.save(update_fields=["payment_requirements", "payment_payload", "settled_amount"])
+        verify.return_value = (SimpleNamespace(address="delegation"), 100)
+
+        self.assertEqual(reconcile_record(recurring), "broadcast")
+
+        recurring.refresh_from_db()
+        self.assertEqual(recurring.status, X402Authorization.Status.SETTLING)
+        self.assertEqual(recurring.transaction_hash, "solana-signature")
+        self.assertEqual(recurring.prepared_transaction, "prepared")
+        self.assertIsNotNone(recurring.transaction_broadcast_at)
+        build.assert_called_once()
+        send.assert_called_once_with("prepared")
+
+    @patch("x402f.views_official.recurring_transaction_status", return_value="confirmed")
+    def test_recurring_confirmed_claim_settles(self, _status) -> None:
+        recurring = record(transaction_hash="solana-signature", prepared_transaction="prepared")
+        recurring.payment_requirements = {"network": "solana:mainnet", "amount": "100"}
+        recurring.payment_payload = {
+            "payload": {
+                "authorizationProfile": PROFILE,
+                "delegation": "delegation",
+                "requestNonce": "request",
+            }
+        }
+        recurring.settled_amount = "75"
+        recurring.save(update_fields=["payment_requirements", "payment_payload", "settled_amount"])
+
+        self.assertEqual(reconcile_record(recurring), "settled")
+        recurring.refresh_from_db()
+        self.assertEqual(recurring.status, X402Authorization.Status.SETTLED)
 
     @override_settings(X402_SETTLEMENT_LEASE_SECONDS=1)
     def test_command_processes_only_stale_records(self) -> None:
