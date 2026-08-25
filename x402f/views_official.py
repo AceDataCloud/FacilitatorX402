@@ -559,16 +559,20 @@ def advance_recurring_settlement(record: X402Authorization, network: str) -> str
                 transaction_hash=record.transaction_hash,
             ).update(status=X402Authorization.Status.FAILED, settling_started_at=None)
             return "failed" if updated == 1 else "conflict"
+        prepared_at = record.transaction_broadcast_at or record.updated_at
+        max_age = timedelta(seconds=settings.X402_PREPARED_MAX_AGE_SECONDS)
+        if prepared_at < timezone.now() - max_age:
+            updated = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash=record.transaction_hash,
+            ).update(status=X402Authorization.Status.FAILED, settling_started_at=None)
+            return "expired" if updated == 1 else "conflict"
         if record.prepared_transaction:
             try:
                 submitted = send_recurring_prepared(record.prepared_transaction)
                 if submitted != record.transaction_hash:
                     raise RuntimeError("Recurring settlement signature changed during rebroadcast")
-                X402Authorization.objects.filter(
-                    pk=record.pk,
-                    status=X402Authorization.Status.SETTLING,
-                    transaction_hash=record.transaction_hash,
-                ).update(transaction_broadcast_at=timezone.now())
             except Exception as exc:
                 logger.warning("recurring x402 rebroadcast failed: nonce={} error={}", record.nonce, exc)
                 return "retry"
@@ -591,7 +595,11 @@ def advance_recurring_settlement(record: X402Authorization, network: str) -> str
                 status=X402Authorization.Status.SETTLING,
                 transaction_hash__isnull=True,
                 settled_amount=amount,
-            ).update(transaction_hash=transaction_hash, prepared_transaction=prepared)
+            ).update(
+                transaction_hash=transaction_hash,
+                prepared_transaction=prepared,
+                transaction_broadcast_at=timezone.now(),
+            )
             if persisted != 1:
                 return "conflict"
             submitted = send_recurring_prepared(prepared)

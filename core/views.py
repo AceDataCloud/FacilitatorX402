@@ -120,8 +120,11 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
     supported_networks = []
     addresses = {}
 
-    def add_kind(scheme: str, network: str) -> None:
-        supported_kinds.append({"x402Version": 2, "scheme": scheme, "network": network})
+    def add_kind(scheme: str, network: str, extra: dict | None = None) -> None:
+        kind = {"x402Version": 2, "scheme": scheme, "network": network}
+        if extra is not None:
+            kind["extra"] = extra
+        supported_kinds.append(kind)
 
     if settings.X402_BASE_EXACT_ENABLED:
         add_kind("exact", settings.X402_BASE_NETWORK)
@@ -143,6 +146,12 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
             addresses["robinhood"] = settings.X402_ROBINHOOD_SIGNER_ADDRESS
     if settings.X402_SOLANA_MAINNET_ENABLED:
         add_kind("exact", SOLANA_MAINNET_CAIP2)
+        if settings.X402_SOLANA_RECURRING_ENABLED:
+            add_kind(
+                "upto",
+                SOLANA_MAINNET_CAIP2,
+                {"authorizationProfile": "solana-recurring-delegation-v1"},
+            )
         supported_networks.append({"network": "solana", "caip2": SOLANA_MAINNET_CAIP2})
         if settings.X402_SOLANA_SIGNER_ADDRESS:
             addresses["solana"] = settings.X402_SOLANA_SIGNER_ADDRESS

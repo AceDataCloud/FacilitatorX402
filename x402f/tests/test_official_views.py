@@ -131,6 +131,7 @@ class OfficialViewTests(TestCase):
         X402_SKALE_EXACT_ENABLED=True,
         X402_ROBINHOOD_EXACT_ENABLED=True,
         X402_SOLANA_MAINNET_ENABLED=True,
+        X402_SOLANA_RECURRING_ENABLED=True,
         X402_SOLANA_DEVNET_ENABLED=True,
     )
     def test_well_known_advertises_all_enabled_parity_kinds(self) -> None:
@@ -144,8 +145,49 @@ class OfficialViewTests(TestCase):
                 ("exact", "eip155:1187947933"),
                 ("exact", "eip155:4663"),
                 ("exact", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
+                ("upto", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
                 ("exact", "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"),
             },
+        )
+        recurring = next(
+            item
+            for item in data["facilitator"]["supportedKinds"]
+            if item["scheme"] == "upto" and item["network"].startswith("solana:")
+        )
+        self.assertEqual(recurring["extra"], {"authorizationProfile": "solana-recurring-delegation-v1"})
+
+    @override_settings(
+        X402_BASE_EXACT_ENABLED=False,
+        X402_BASE_UPTO_ENABLED=False,
+        X402_SKALE_EXACT_ENABLED=False,
+        X402_ROBINHOOD_EXACT_ENABLED=False,
+        X402_SOLANA_MAINNET_ENABLED=True,
+        X402_SOLANA_RECURRING_ENABLED=True,
+        X402_SOLANA_SIGNER_ADDRESS="11111111111111111111111111111112",
+        X402_SOLANA_DEVNET_ENABLED=False,
+    )
+    def test_supported_advertises_recurring_solana_profile(self) -> None:
+        response = self.client.get(reverse("x402:supported"))
+        self.assertEqual(response.status_code, 200)
+        kinds = response.json()["kinds"]
+        self.assertEqual(
+            kinds,
+            [
+                {
+                    "x402Version": 2,
+                    "scheme": "exact",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "extra": {
+                        "feePayer": __import__("django.conf", fromlist=["settings"]).settings.X402_SOLANA_SIGNER_ADDRESS
+                    },
+                },
+                {
+                    "x402Version": 2,
+                    "scheme": "upto",
+                    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                    "extra": {"authorizationProfile": "solana-recurring-delegation-v1"},
+                },
+            ],
         )
 
     @override_settings(
