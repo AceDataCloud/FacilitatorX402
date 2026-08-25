@@ -153,7 +153,9 @@ class SvmRecurringTests(TestCase):
 
         def assert_prepared(value):
             current = X402Authorization.objects.get(pk=record.pk)
-            observed.append((current.transaction_hash, current.prepared_transaction))
+            observed.append(
+                (current.transaction_hash, current.prepared_transaction, current.transaction_broadcast_at is not None)
+            )
             return "tx-signature"
 
         send.side_effect = assert_prepared
@@ -161,7 +163,7 @@ class SvmRecurringTests(TestCase):
         record.refresh_from_db()
         self.assertFalse(response.data["success"])
         self.assertEqual(response.data["transaction"], "tx-signature")
-        self.assertEqual(observed, [("tx-signature", "prepared")])
+        self.assertEqual(observed, [("tx-signature", "prepared", True)])
         self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.settled_amount, "200")
         self.assertIsNotNone(record.transaction_broadcast_at)

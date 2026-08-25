@@ -281,6 +281,17 @@ def configured_supported_response() -> SupportedResponse:
             )
         )
         svm_addresses.append(settings.X402_SOLANA_SIGNER_ADDRESS)
+    if settings.X402_SOLANA_RECURRING_ENABLED:
+        if not settings.X402_SOLANA_MAINNET_ENABLED:
+            raise RuntimeError("Solana recurring payments require mainnet")
+        kinds.append(
+            SupportedKind(
+                x402Version=2,
+                scheme="upto",
+                network=SOLANA_MAINNET_CAIP2,
+                extra={"authorizationProfile": "solana-recurring-delegation-v1"},
+            )
+        )
     if settings.X402_SOLANA_DEVNET_ENABLED:
         devnet_address = settings.X402_SOLANA_DEVNET_SIGNER_ADDRESS
         if not devnet_address:

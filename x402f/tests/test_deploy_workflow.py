@@ -55,3 +55,11 @@ def test_runtime_changes_are_not_ignored() -> None:
 
     for runtime_path in ("x402f/**", "poetry.lock", "Dockerfile", "deploy/**", ".github/workflows/**"):
         assert runtime_path not in ignored_block
+
+
+def test_solana_recurring_is_enabled_in_runtime_and_reconciler() -> None:
+    cronjob = (ROOT / "deploy" / "production" / "reconciliation-cronjob.yaml").read_text()
+    for manifest in (DEPLOYMENT.read_text(), cronjob):
+        block = manifest.split("- name: X402_SOLANA_RECURRING_ENABLED", 1)[1].split("- name:", 1)[0]
+        assert 'value: "true"' in block
+        assert 'value: "false"' not in block

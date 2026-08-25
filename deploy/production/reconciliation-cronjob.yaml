@@ -127,7 +127,7 @@ spec:
                 - name: X402_SOLANA_MAINNET_ENABLED
                   value: "true"
                 - name: X402_SOLANA_RECURRING_ENABLED
-                  value: "false"
+                  value: "true"
                 - name: X402_SOLANA_SUBSCRIPTIONS_PROGRAM
                   value: De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
                 - name: X402_SOLANA_TOKEN_PROGRAM

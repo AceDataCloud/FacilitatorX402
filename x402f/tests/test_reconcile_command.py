@@ -137,6 +137,35 @@ class ReconciliationCommandTests(TestCase):
         build.assert_called_once()
         send.assert_called_once_with("prepared")
 
+    @override_settings(X402_PREPARED_MAX_AGE_SECONDS=60)
+    @patch("x402f.views_official.send_recurring_prepared")
+    @patch("x402f.views_official.recurring_transaction_status", return_value="pending")
+    def test_recurring_expired_prepared_transaction_stops_rebroadcasting(self, _status, send) -> None:
+        recurring = record(transaction_hash="solana-signature", prepared_transaction="prepared")
+        recurring.payment_requirements = {"network": "solana:mainnet", "amount": "100"}
+        recurring.payment_payload = {
+            "payload": {
+                "authorizationProfile": PROFILE,
+                "delegation": "delegation",
+                "requestNonce": "request",
+            }
+        }
+        recurring.settled_amount = "75"
+        recurring.transaction_broadcast_at = timezone.now() - timedelta(minutes=2)
+        recurring.save(
+            update_fields=[
+                "payment_requirements",
+                "payment_payload",
+                "settled_amount",
+                "transaction_broadcast_at",
+            ]
+        )
+
+        self.assertEqual(reconcile_record(recurring), "expired")
+        recurring.refresh_from_db()
+        self.assertEqual(recurring.status, X402Authorization.Status.FAILED)
+        send.assert_not_called()
+
     @patch("x402f.views_official.recurring_transaction_status", return_value="confirmed")
     def test_recurring_confirmed_claim_settles(self, _status) -> None:
         recurring = record(transaction_hash="solana-signature", prepared_transaction="prepared")
