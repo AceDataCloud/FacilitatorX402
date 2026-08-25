@@ -9,7 +9,7 @@ ERROR_SPECS: dict[str, tuple[str, bool]] = {
     "network_mismatch": ("The wallet is connected to a different network.", True),
     "invalid_signature": ("The payment signature is invalid.", True),
     "facilitator_unavailable": ("Payment verification is temporarily unavailable.", True),
-    "settlement_pending": ("The payment result could not be confirmed yet.", False),
+    "settlement_pending": ("The payment result could not be confirmed yet.", True),
     "settlement_failed": ("The payment could not be settled.", False),
     "payment_failed": ("The payment could not be completed.", False),
 }

@@ -162,6 +162,8 @@ class SvmRecurringTests(TestCase):
         response = _settle_recurring(record, self._identity(), "200", NETWORK)
         record.refresh_from_db()
         self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["errorReason"], "settlement_pending")
+        self.assertTrue(response.data["extensions"]["acedatacloud"]["paymentError"]["retryable"])
         self.assertEqual(response.data["transaction"], "tx-signature")
         self.assertEqual(observed, [("tx-signature", "prepared", True)])
         self.assertEqual(record.status, X402Authorization.Status.SETTLING)
@@ -219,6 +221,8 @@ class SvmRecurringTests(TestCase):
 
         record.refresh_from_db()
         self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["errorReason"], "settlement_pending")
+        self.assertTrue(response.data["extensions"]["acedatacloud"]["paymentError"]["retryable"])
         self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.settled_amount, "200")
         self.assertIsNone(record.transaction_hash)
@@ -234,6 +238,8 @@ class SvmRecurringTests(TestCase):
 
         record.refresh_from_db()
         self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["errorReason"], "settlement_pending")
+        self.assertTrue(response.data["extensions"]["acedatacloud"]["paymentError"]["retryable"])
         self.assertEqual(response.data["transaction"], "tx-signature")
         self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.transaction_hash, "tx-signature")
