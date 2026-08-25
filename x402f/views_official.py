@@ -696,7 +696,7 @@ def _settle_recurring(
         )
     if record.status == X402Authorization.Status.FAILED:
         return _recurring_response(record, network, "Facilitator settlement failed.")
-    return _recurring_response(record, network, "Settlement transaction is pending confirmation.")
+    return _recurring_response(record, network, "settlement_pending")
 
 
 class X402SettleView(APIView):

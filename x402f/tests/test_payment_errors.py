@@ -15,6 +15,7 @@ def test_reason_mapping_is_centralized() -> None:
 def test_settlement_uncertainty_never_claims_not_charged() -> None:
     error = payment_error("settlement_status_unavailable", stage="settle", network="eip155:8453")
     assert error["code"] == "settlement_pending"
+    assert error["retryable"] is True
     assert "charged" not in error
 
 
