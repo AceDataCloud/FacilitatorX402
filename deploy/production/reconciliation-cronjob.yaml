@@ -10,8 +10,9 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 50
+      activeDeadlineSeconds: 270
       backoffLimit: 1
+      ttlSecondsAfterFinished: 600
       template:
         metadata:
           labels:
@@ -31,7 +32,7 @@ spec:
             - name: reconcile
               image: ghcr.io/acedatacloud/facilitator-backend:${TAG}
               imagePullPolicy: IfNotPresent
-              command: ["python", "manage.py", "reconcile_x402", "--limit", "100"]
+              command: ["python", "manage.py", "reconcile_x402", "--limit", "100", "--max-runtime-seconds", "240"]
               envFrom:
                 - secretRef:
                     name: pgsql

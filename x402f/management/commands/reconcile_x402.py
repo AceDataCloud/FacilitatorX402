@@ -1,4 +1,5 @@
 from datetime import timedelta
+from time import monotonic
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -106,11 +107,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser) -> None:  # noqa: ANN001
         parser.add_argument("--limit", type=int, default=100)
+        parser.add_argument("--max-runtime-seconds", type=int, default=240)
 
     def handle(self, *args, **options):  # noqa: ANN002, ANN003, ANN201
         limit = options["limit"]
         if limit <= 0 or limit > 1000:
             raise CommandError("limit must be between 1 and 1000")
+        max_runtime = options["max_runtime_seconds"]
+        if max_runtime <= 0:
+            raise CommandError("max-runtime-seconds must be positive")
+        deadline = monotonic() + max_runtime
         cutoff = timezone.now() - timedelta(seconds=settings.X402_SETTLEMENT_LEASE_SECONDS)
         records = list(
             X402Authorization.objects.filter(
@@ -120,10 +126,14 @@ class Command(BaseCommand):
         )
         outcomes: dict[str, int] = {}
         for record in records:
+            if monotonic() + settings.X402_TX_TIMEOUT_SECONDS + 10 >= deadline:
+                break
             try:
                 outcome = reconcile_record(record)
             except Exception as exc:
                 outcome = "error"
                 self.stderr.write(f"{record.pk}: {type(exc).__name__}")
             outcomes[outcome] = outcomes.get(outcome, 0) + 1
-        self.stdout.write(str({"processed": len(records), "outcomes": outcomes}))
+        self.stdout.write(str({"processed": sum(outcomes.values()), "outcomes": outcomes}))
+        if outcomes.get("error"):
+            raise CommandError(f"reconciliation failed for {outcomes['error']} record(s)")
