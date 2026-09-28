@@ -31,15 +31,17 @@ class EnvarSettleTests(EnvarVerifyTests):
 
     def configured(self, network=None, on_transaction_prepared=None, on_transaction_broadcast=None):
         del on_transaction_broadcast, network
-        return SimpleNamespace(
-            facilitator=FakeFacilitator(on_transaction_prepared),
-            signer_for=lambda _network: FakeSigner(),
-        )
+        signer = FakeSigner()
+        signer.has_exact_usdc_transfer = lambda _tx, _asset, _payer, _recipient, _amount: True
+        return SimpleNamespace(facilitator=FakeFacilitator(on_transaction_prepared), signer_for=lambda _network: signer)
 
     def test_settles_once_and_replays_same_confirmed_transaction(self):
         payment = self.payment()
         record = self.reserve(payment)
-        with patch("x402f.views_official._configured", side_effect=self.configured) as configured:
+        with (
+            patch("x402f.views_official._configured", side_effect=self.configured) as configured,
+            patch("x402f.delegation_settle._configured", side_effect=self.configured),
+        ):
             first = self.settle(payment)
             second = self.settle(payment)
         assert first.json()["success"] is True, first.content
@@ -105,16 +107,35 @@ class EnvarSettleTests(EnvarVerifyTests):
                 assert raw == "prepared-transaction"
                 return tx_hash
 
-        with patch("x402f.views_official._configured") as configured:
+        with (
+            patch("x402f.views_official._configured") as configured,
+            patch("x402f.delegation_settle._configured", side_effect=self.configured),
+        ):
             configured.return_value.signer_for.return_value = PendingSigner()
             pending = self.settle(payment)
             assert pending.json()["success"] is False
             assert pending.json()["transaction"] == tx_hash
             configured.return_value.facilitator.settle.assert_not_called()
-            configured.return_value.signer_for.return_value = FakeSigner()
+            proven = FakeSigner()
+            proven.has_exact_usdc_transfer = lambda _tx, _asset, _payer, _recipient, _amount: True
+            configured.return_value.signer_for.return_value = proven
             confirmed = self.settle(payment)
             configured.return_value.facilitator.settle.assert_not_called()
         assert confirmed.json()["success"] is True
         assert confirmed.json()["transaction"] == tx_hash
+        record.refresh_from_db()
+        assert record.status == X402Authorization.Status.SETTLED
+
+    def test_missing_transfer_proof_never_reports_success(self):
+        payment = self.payment()
+        record = self.reserve(payment)
+        with (
+            patch("x402f.views_official._configured", side_effect=self.configured),
+            patch("x402f.delegation_settle._configured") as proof,
+        ):
+            proof.return_value.signer_for.return_value.has_exact_usdc_transfer.return_value = False
+            response = self.settle(payment)
+        assert response.json()["success"] is False
+        assert response.json()["transaction"] == "0x" + "ab" * 32
         record.refresh_from_db()
         assert record.status == X402Authorization.Status.SETTLED

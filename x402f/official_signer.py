@@ -133,6 +133,27 @@ class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
             tx_hash=tx_hash,
         )
 
+    def has_exact_usdc_transfer(self, tx_hash: str, asset: str, payer: str, recipient: str, amount: int) -> bool:
+        receipt = self._w3.eth.get_transaction_receipt(tx_hash)
+        if receipt["status"] != 1 or receipt["transactionHash"].hex().lower().removeprefix(
+            "0x"
+        ) != tx_hash.lower().removeprefix("0x"):
+            return False
+        transfer_topic = Web3.keccak(text="Transfer(address,address,uint256)")
+        payer_topic = bytes.fromhex(payer[2:].lower()).rjust(32, b"\x00")
+        recipient_topic = bytes.fromhex(recipient[2:].lower()).rjust(32, b"\x00")
+        matching = [
+            log
+            for log in receipt["logs"]
+            if log["address"].lower() == asset.lower()
+            and len(log["topics"]) == 3
+            and bytes(log["topics"][0]) == transfer_topic
+            and bytes(log["topics"][1]) == payer_topic
+            and bytes(log["topics"][2]) == recipient_topic
+            and int.from_bytes(bytes(log["data"]), "big") == amount
+        ]
+        return len(matching) == 1
+
     def get_transaction_status(self, tx_hash: str) -> str:
         try:
             receipt = self._w3.eth.get_transaction_receipt(tx_hash)

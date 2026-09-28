@@ -10,6 +10,7 @@ from x402.schemas import SettleRequest
 
 from x402f.models import EnvarDelegationAuthorization, EnvarDelegationRegistration, X402Authorization
 from x402f.views_official import (
+    _configured,
     _failed_settle,
     _parse_request,
     _payment_identity,
@@ -65,4 +66,19 @@ class EnvarDelegationSettleView(APIView):
             return _failed_settle("registration_expired")
         if record.verification_id != str(registration.intent_id):
             return _failed_settle("authorization_conflict")
-        return _settle_verified_authorization(payment, identity, record)
+        result = _settle_verified_authorization(payment, identity, record)
+        if result.data.get("success") is not True:
+            return result
+        tx_hash = result.data.get("transaction")
+        if not isinstance(tx_hash, str) or not tx_hash.startswith("0x") or len(tx_hash) != 66:
+            return _failed_settle("settlement_status_unavailable", network=registration.network)
+        try:
+            signer = _configured(registration.network).signer_for(registration.network)
+            proven = signer.has_exact_usdc_transfer(
+                tx_hash, registration.asset, record.payer, registration.recipient, int(registration.amount_atomic)
+            )
+        except Exception:
+            proven = False
+        if not proven:
+            return _failed_settle("settlement_status_unavailable", tx_hash, registration.network)
+        return result
