@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import uuid
 
@@ -59,6 +60,8 @@ class EnvarDelegationVerifyView(APIView):
                 not isinstance(authorization, dict)
                 or str(authorization.get("to", "")).lower() != registration.recipient.lower()
                 or str(authorization.get("value", "")) != registration.amount_atomic
+                or str(authorization.get("nonce", "")).lower()
+                != "0x" + hashlib.sha256(b"envar-delegation-payment-v1:" + intent_id.bytes).hexdigest()
             ):
                 return _invalid_verify("authorization_mismatch")
             identity = _payment_identity(payment)
@@ -92,6 +95,8 @@ class EnvarDelegationVerifyView(APIView):
             return _invalid_verify("facilitator_verification_failed")
         if not result.is_valid:
             return _response(result)
+        if not result.payer or result.payer.lower() != identity.payer:
+            return _invalid_verify("payer_mismatch")
         try:
             with transaction.atomic():
                 authorization = X402Authorization.objects.create(
