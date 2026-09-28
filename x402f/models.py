@@ -55,6 +55,9 @@ class X402Authorization(models.Model):
 
 class EnvarDelegationRegistration(models.Model):
     intent_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    parent_run_id = models.UUIDField()
+    attempt_id = models.UUIDField(unique=True)
+    request_owner_account_id = models.CharField(max_length=64)
     agent_id = models.UUIDField()
     owner_account_id = models.CharField(max_length=64)
     agent_version_id = models.UUIDField()

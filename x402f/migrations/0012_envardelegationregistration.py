@@ -15,6 +15,9 @@ class Migration(migrations.Migration):
             name="EnvarDelegationRegistration",
             fields=[
                 ("intent_id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ("parent_run_id", models.UUIDField()),
+                ("attempt_id", models.UUIDField(unique=True)),
+                ("request_owner_account_id", models.CharField(max_length=64)),
                 ("agent_id", models.UUIDField()),
                 ("owner_account_id", models.CharField(max_length=64)),
                 ("agent_version_id", models.UUIDField()),

@@ -15,6 +15,9 @@ class EnvarRegistrationTests(TestCase):
         self.url = reverse("x402:envar-delegation-register")
         self.terms = {
             "intent_id": str(uuid.uuid4()),
+            "parent_run_id": str(uuid.uuid4()),
+            "attempt_id": str(uuid.uuid4()),
+            "request_owner_account_id": "buyer",
             "agent_id": str(uuid.uuid4()),
             "owner_account_id": "seller",
             "agent_version_id": str(uuid.uuid4()),
@@ -50,6 +53,14 @@ class EnvarRegistrationTests(TestCase):
         assert self.register().status_code == 200
         changed = {**self.terms, "recipient": "0x3333333333333333333333333333333333333333"}
         assert self.register(changed).status_code == 409
+        for field, value in (
+            ("parent_run_id", str(uuid.uuid4())),
+            ("attempt_id", str(uuid.uuid4())),
+            ("request_owner_account_id", "different-buyer"),
+        ):
+            assert self.register({**self.terms, field: value}).status_code == 409
+        other_intent = {**self.terms, "intent_id": str(uuid.uuid4())}
+        assert self.register(other_intent).status_code == 409
         assert EnvarDelegationRegistration.objects.count() == 1
         assert EnvarDelegationRegistration.objects.get().recipient == self.terms["recipient"]
 

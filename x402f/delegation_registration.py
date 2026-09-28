@@ -16,6 +16,9 @@ DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 AMOUNT = re.compile(r"[1-9][0-9]{0,4}\Z")
 FIELDS = {
     "intent_id",
+    "parent_run_id",
+    "attempt_id",
+    "request_owner_account_id",
     "agent_id",
     "owner_account_id",
     "agent_version_id",
@@ -35,19 +38,24 @@ def _parse(value):  # noqa: ANN001, ANN202
         raise ValueError("Registration fields are invalid")
     try:
         intent_id = uuid.UUID(value["intent_id"])
+        parent_run_id = uuid.UUID(value["parent_run_id"])
+        attempt_id = uuid.UUID(value["attempt_id"])
         agent_id = uuid.UUID(value["agent_id"])
         version_id = uuid.UUID(value["agent_version_id"])
         expiry = datetime.fromisoformat(value["expires_at"])
     except (ValueError, TypeError, AttributeError, KeyError) as exc:
         raise ValueError("Registration identity is invalid") from exc
     owner = value["owner_account_id"]
+    requester = value["request_owner_account_id"]
     revision = value["payee_revision"]
     amount = value["amount_atomic"]
     recipient = value["recipient"]
     asset = value["asset"]
     digest = value["terms_digest"]
     if (
-        not isinstance(owner, str)
+        not isinstance(requester, str)
+        or not 1 <= len(requester) <= 64
+        or not isinstance(owner, str)
         or not 1 <= len(owner) <= 64
         or type(revision) is not int
         or revision < 1
@@ -67,6 +75,9 @@ def _parse(value):  # noqa: ANN001, ANN202
         raise ValueError("Registration terms are invalid")
     return {
         "intent_id": intent_id,
+        "parent_run_id": parent_run_id,
+        "attempt_id": attempt_id,
+        "request_owner_account_id": requester,
         "agent_id": agent_id,
         "owner_account_id": owner,
         "agent_version_id": version_id,
