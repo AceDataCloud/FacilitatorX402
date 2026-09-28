@@ -77,3 +77,18 @@ class EnvarDelegationRegistration(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValueError("Envar delegation registrations are retained for audit")
+
+
+class EnvarDelegationAuthorization(models.Model):
+    registration = models.OneToOneField(
+        EnvarDelegationRegistration, primary_key=True, on_delete=models.PROTECT, related_name="authorization_binding"
+    )
+    authorization = models.OneToOneField(
+        X402Authorization, on_delete=models.PROTECT, related_name="envar_delegation_binding"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValueError("Delegation authorization bindings are immutable")
+        return super().save(*args, **kwargs)
