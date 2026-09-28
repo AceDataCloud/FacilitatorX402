@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import time
@@ -11,7 +12,7 @@ from django.utils import timezone
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 from hexbytes import HexBytes
-from x402.schemas import PaymentPayload, PaymentRequirements
+from x402.schemas import PaymentPayload, PaymentRequirements, VerifyResponse
 
 from x402f.models import EnvarDelegationAuthorization, EnvarDelegationRegistration, X402Authorization
 from x402f.official import build_facilitator
@@ -49,7 +50,10 @@ class EnvarVerifyTests(TestCase):
 
     def payment(self, *, recipient=None, amount="10000", nonce=None):
         recipient = recipient or self.payee.address
-        nonce = nonce or "0x" + os.urandom(32).hex()
+        nonce = (
+            nonce
+            or "0x" + hashlib.sha256(b"envar-delegation-payment-v1:" + self.registration.intent_id.bytes).hexdigest()
+        )
         now = int(time.time())
         authorization = {
             "from": self.payer.address,
@@ -152,8 +156,10 @@ class EnvarVerifyTests(TestCase):
     def test_wrong_recipient_amount_and_token_do_not_reserve(self):
         wrong_recipient = self.payment(recipient=Account.create().address)
         wrong_amount = self.payment(amount="9999")
+        wrong_nonce = self.payment(nonce="0x" + os.urandom(32).hex())
         assert self.verify(wrong_recipient).json()["isValid"] is False
         assert self.verify(wrong_amount).json()["isValid"] is False
+        assert self.verify(wrong_nonce).json()["isValid"] is False
         assert self.verify(self.payment(), token="wrong").status_code == 403
         assert not X402Authorization.objects.exists()
 
@@ -167,4 +173,13 @@ class EnvarVerifyTests(TestCase):
             expires_at=timezone.now() - timedelta(seconds=1)
         )
         assert self.verify(self.payment()).json()["isValid"] is False
+        assert not X402Authorization.objects.exists()
+
+    def test_mismatched_verified_payer_is_not_reserved(self):
+        payment = self.payment()
+        with patch("x402f.delegation_verify._configured") as configured:
+            configured.return_value.facilitator.verify.return_value = VerifyResponse(
+                is_valid=True, payer=Account.create().address
+            )
+            assert self.verify(payment).json()["isValid"] is False
         assert not X402Authorization.objects.exists()
