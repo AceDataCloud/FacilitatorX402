@@ -779,11 +779,11 @@ def _settle_verified_authorization(
             return _failed_settle("settlement_status_unavailable", record.transaction_hash, network)
         if transaction_status == "confirmed":
             try:
-                X402Authorization.objects.filter(pk=record.pk).update(
-                    status=X402Authorization.Status.SETTLED,
-                    settled_at=timezone.now(),
-                    settling_started_at=None,
-                )
+                updated = X402Authorization.objects.filter(
+                    pk=record.pk, status=X402Authorization.Status.SETTLING, transaction_hash=record.transaction_hash
+                ).update(status=X402Authorization.Status.SETTLED, settled_at=timezone.now(), settling_started_at=None)
+                if updated != 1:
+                    return _failed_settle("settlement_status_unavailable", record.transaction_hash, network)
             except Exception as exc:
                 logger.error(
                     "confirmed x402 settlement final-state persistence failed: nonce={} tx={} error_type={}",
@@ -791,6 +791,7 @@ def _settle_verified_authorization(
                     record.transaction_hash,
                     exc,
                 )
+                return _failed_settle("settlement_status_unavailable", record.transaction_hash, network)
             return _response(
                 SettleResponse(
                     success=True,
@@ -900,19 +901,27 @@ def _settle_verified_authorization(
 
     if result.success:
         try:
-            X402Authorization.objects.filter(pk=record.pk).update(
-                status=X402Authorization.Status.SETTLED,
+            updated = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
                 transaction_hash=result.transaction,
+            ).update(
+                status=X402Authorization.Status.SETTLED,
                 settled_amount=settled_amount,
                 settled_at=timezone.now(),
                 settling_started_at=None,
             )
+            if updated != 1:
+                return _failed_settle("settlement_status_unavailable", result.transaction or "", network)
         except Exception as exc:
             logger.error(
                 "successful x402 settlement final-state persistence failed: nonce={} tx={} error_type={}",
                 identity.nonce,
                 result.transaction or record.transaction_hash,
                 exc,
+            )
+            return _failed_settle(
+                "settlement_status_unavailable", result.transaction or record.transaction_hash or "", network
             )
     elif record.transaction_hash is None:
         X402Authorization.objects.filter(
