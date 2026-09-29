@@ -63,3 +63,13 @@ def test_solana_recurring_is_enabled_in_runtime_and_reconciler() -> None:
         block = manifest.split("- name: X402_SOLANA_RECURRING_ENABLED", 1)[1].split("- name:", 1)[0]
         assert 'value: "true"' in block
         assert 'value: "false"' not in block
+
+
+def test_envar_delegation_is_disabled_without_optional_dedicated_secret() -> None:
+    deployment = DEPLOYMENT.read_text()
+    flag = deployment.split("- name: X402_ENVAR_DELEGATION_ENABLED", 1)[1].split("- name:", 1)[0]
+    token = deployment.split("- name: X402_ENVAR_DELEGATION_TOKEN", 1)[1].split("- name:", 1)[0]
+    assert 'value: "false"' in flag
+    assert "key: ENVAR_DELEGATION_TOKEN" in token
+    assert "optional: true" in token
+    assert "SETTLE_TOKEN" not in token
