@@ -1,5 +1,3 @@
-import uuid
-
 from django.db import models
 from django.utils import timezone
 
@@ -43,6 +41,13 @@ class X402Authorization(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["verification_id"],
+                condition=models.Q(verification_id__startswith="envar:"),
+                name="x402_envar_intent_unique",
+            ),
+        ]
 
     def mark_settled(self, tx_hash: str, settled_amount: str | None = None) -> None:
         self.status = self.Status.SETTLED
@@ -51,44 +56,3 @@ class X402Authorization(models.Model):
         self.settling_started_at = None
         if settled_amount is not None:
             self.settled_amount = str(settled_amount)
-
-
-class EnvarDelegationRegistration(models.Model):
-    intent_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    parent_run_id = models.UUIDField()
-    attempt_id = models.UUIDField(unique=True)
-    request_owner_account_id = models.CharField(max_length=64)
-    agent_id = models.UUIDField()
-    owner_account_id = models.CharField(max_length=64)
-    agent_version_id = models.UUIDField()
-    payee_revision = models.PositiveIntegerField()
-    recipient = models.CharField(max_length=42)
-    network = models.CharField(max_length=32)
-    asset = models.CharField(max_length=42)
-    amount_atomic = models.CharField(max_length=5)
-    terms_digest = models.CharField(max_length=64)
-    expires_at = models.DateTimeField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        if not self._state.adding:
-            raise ValueError("Envar delegation registrations are immutable")
-        return super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        raise ValueError("Envar delegation registrations are retained for audit")
-
-
-class EnvarDelegationAuthorization(models.Model):
-    registration = models.OneToOneField(
-        EnvarDelegationRegistration, primary_key=True, on_delete=models.PROTECT, related_name="authorization_binding"
-    )
-    authorization = models.OneToOneField(
-        X402Authorization, on_delete=models.PROTECT, related_name="envar_delegation_binding"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def save(self, *args, **kwargs):
-        if not self._state.adding:
-            raise ValueError("Delegation authorization bindings are immutable")
-        return super().save(*args, **kwargs)

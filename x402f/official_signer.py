@@ -146,10 +146,12 @@ class DurableFacilitatorWeb3Signer(FacilitatorWeb3Signer):
             log
             for log in receipt["logs"]
             if log["address"].lower() == asset.lower()
+            and not log.get("removed", False)
             and len(log["topics"]) == 3
             and bytes(log["topics"][0]) == transfer_topic
             and bytes(log["topics"][1]) == payer_topic
             and bytes(log["topics"][2]) == recipient_topic
+            and len(bytes(log["data"])) == 32
             and int.from_bytes(bytes(log["data"]), "big") == amount
         ]
         return len(matching) == 1

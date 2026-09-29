@@ -31,6 +31,7 @@ from x402.mechanisms.svm.utils import (
 )
 from x402.schemas import SettleRequest, SettleResponse, VerifyRequest, VerifyResponse
 
+from x402f import envar_policy
 from x402f.models import X402Authorization
 from x402f.official import (
     ROBINHOOD_MAINNET,
@@ -424,7 +425,7 @@ class X402VerifyView(APIView):
 
         requirements = verify_request.payment_requirements
         verification_id = request.headers.get("X-Idempotency-Key", "").strip()
-        if len(verification_id) > 128:
+        if len(verification_id) > 128 or verification_id.startswith(envar_policy.PREFIX):
             return _invalid_verify("invalid_idempotency_key")
         serialized_requirements = requirements.model_dump(mode="json", by_alias=True)
         serialized_payload = verify_request.payment_payload.model_dump(mode="json", by_alias=True)
@@ -704,6 +705,8 @@ class X402SettleView(APIView):
     permission_classes: list = []
 
     def post(self, request, *args, **kwargs):  # noqa: ANN001
+        if "X-Envar-Delegation-Token" in request.headers or "X-Envar-Intent-Id" in request.headers:
+            return _settle_envar(request)
         expected_token = settings.X402_SETTLE_TOKEN
         supplied_token = request.headers.get("X-Settlement-Token", "")
         if not expected_token or not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
@@ -733,9 +736,65 @@ class X402SettleView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        if hasattr(record, "envar_delegation_binding"):
+        if envar_policy.is_envar(record):
             return _failed_settle("invalid_payment_request")
         return _settle_verified_authorization(settle_request, identity, record)
+
+
+def _settle_envar(request) -> Response:  # noqa: ANN001
+    try:
+        intent = envar_policy.authenticate(request.headers)
+    except (ValueError, TypeError, AttributeError):
+        return _failed_settle("invalid_payment_request", status_code=status.HTTP_403_FORBIDDEN)
+    try:
+        envar_policy.validate_terms(request.data, intent)
+        payment = _parse_request(request.data, SettleRequest)
+        identity = _payment_identity(payment)
+    except (ValidationError, ValueError, TypeError, KeyError, OverflowError):
+        return _failed_settle("invalid_payment_request", status_code=status.HTTP_400_BAD_REQUEST)
+    verification_id = f"{envar_policy.PREFIX}{intent}"
+    requirements = payment.payment_requirements.model_dump(mode="json", by_alias=True)
+    payload = payment.payment_payload.model_dump(mode="json", by_alias=True)
+    record = X402Authorization.objects.filter(nonce=identity.nonce).first()
+    if record is None:
+        if X402Authorization.objects.filter(verification_id=verification_id).exists():
+            return _failed_settle("authorization_conflict", status_code=status.HTTP_409_CONFLICT)
+        if identity.valid_before > timezone.now() + timedelta(seconds=600):
+            return _failed_settle("invalid_payment_request", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            verified = _verify_request(payment, _configured(envar_policy.BASE_NETWORK))
+        except Exception as exc:
+            logger.warning("Envar verification unavailable: error_type={}", type(exc).__name__)
+            return _failed_settle("facilitator_verification_failed")
+        if not verified.is_valid or not verified.payer or verified.payer.lower() != identity.payer:
+            return _failed_settle("invalid_payment_request", status_code=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                record = X402Authorization.objects.create(
+                    nonce=identity.nonce,
+                    verification_id=verification_id,
+                    payer=identity.payer,
+                    pay_to=payment.payment_requirements.pay_to,
+                    value=payment.payment_requirements.amount,
+                    valid_after=identity.valid_after,
+                    valid_before=identity.valid_before,
+                    signature=identity.signature,
+                    payment_requirements=requirements,
+                    payment_payload=payload,
+                    scheme="exact",
+                )
+        except IntegrityError:
+            record = X402Authorization.objects.filter(nonce=identity.nonce).first()
+    if (
+        record is None
+        or record.verification_id != verification_id
+        or record.payer.lower() != identity.payer
+        or record.signature != identity.signature
+        or record.payment_requirements != requirements
+        or record.payment_payload != payload
+    ):
+        return _failed_settle("authorization_conflict", status_code=status.HTTP_409_CONFLICT)
+    return _settle_verified_authorization(payment, identity, record)
 
 
 def _settle_verified_authorization(
@@ -745,11 +804,21 @@ def _settle_verified_authorization(
     incoming_payload = settle_request.payment_payload.model_dump(mode="json", by_alias=True)
     requirements_match, settled_amount = _settlement_requirements_match(record, incoming_requirements)
     network = str(incoming_requirements.get("network"))
+    envar = envar_policy.is_envar(record)
     if not requirements_match or incoming_payload != record.payment_payload:
         return _failed_settle("payment_mismatch", network=network)
     if is_recurring_payload(incoming_payload):
         return _settle_recurring(record, identity, settled_amount, network)
+    if envar and record.status == X402Authorization.Status.FAILED:
+        return _failed_settle("settlement_transaction_failed", record.transaction_hash or "", network)
     if record.status == X402Authorization.Status.SETTLED:
+        if envar:
+            try:
+                proven = envar_policy.transfer_proven(record, _configured(network).signer_for(network))
+            except Exception:
+                proven = False
+            if not proven:
+                return _failed_settle("settlement_status_unavailable", record.transaction_hash or "", network)
         if network.startswith("solana:"):
             return _failed_settle(
                 ERR_DUPLICATE_SETTLEMENT,
@@ -778,6 +847,8 @@ def _settle_verified_authorization(
             )
             return _failed_settle("settlement_status_unavailable", record.transaction_hash, network)
         if transaction_status == "confirmed":
+            if envar and not envar_policy.transfer_proven(record, signer):
+                return _failed_settle("settlement_status_unavailable", record.transaction_hash, network)
             try:
                 updated = X402Authorization.objects.filter(
                     pk=record.pk, status=X402Authorization.Status.SETTLING, transaction_hash=record.transaction_hash
@@ -802,6 +873,13 @@ def _settle_verified_authorization(
                 )
             )
         if transaction_status == "failed":
+            if envar:
+                X402Authorization.objects.filter(
+                    pk=record.pk,
+                    status=X402Authorization.Status.SETTLING,
+                    transaction_hash=record.transaction_hash,
+                ).update(status=X402Authorization.Status.FAILED, settling_started_at=None)
+                return _failed_settle("settlement_transaction_failed", record.transaction_hash, network)
             cleared = X402Authorization.objects.filter(
                 pk=record.pk,
                 status=X402Authorization.Status.SETTLING,
@@ -900,6 +978,10 @@ def _settle_verified_authorization(
         return _failed_settle("facilitator_settlement_failed", record.transaction_hash or "", network)
 
     if result.success:
+        if envar:
+            if result.transaction != record.transaction_hash or not envar_policy.transfer_proven(record, signer):
+                return _failed_settle("settlement_status_unavailable", record.transaction_hash or "", network)
+            result = result.model_copy(update={"amount": settled_amount, "payer": record.payer})
         try:
             updated = X402Authorization.objects.filter(
                 pk=record.pk,
