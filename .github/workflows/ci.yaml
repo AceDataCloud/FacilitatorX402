@@ -71,3 +71,32 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  postgres:
+    name: PostgreSQL settlement concurrency
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: facilitator_test
+          POSTGRES_USER: facilitator_test
+          POSTGRES_PASSWORD: test-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U facilitator_test"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+      - run: pip install poetry==1.8.5 && poetry install
+      - run: poetry run python -m pytest x402f/tests core/tests -q
+        env:
+          DATABASE_ENGINE: django.db.backends.postgresql
+          PGSQL_HOST: 127.0.0.1
+          PGSQL_PORT: "5432"
+          PGSQL_USER: facilitator_test
+          PGSQL_PASSWORD: test-only-password
+          PGSQL_DATABASE_FACILITATOR: facilitator_test
