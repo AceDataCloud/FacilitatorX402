@@ -13,10 +13,18 @@ concurrency:
   group: facilitator-production
   cancel-in-progress: false
 
+env:
+  BUILD_NUMBER: ${{ github.run_id }}-${{ github.run_attempt }}
+
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   run:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -31,37 +39,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Test IP Address
-        run: |
-          wget -qO- https://ipecho.net/plain ; echo
-
-      - name: Generate Build Number
-        uses: einaregilsson/build-number@v2
-        with:
-          token: ${{ secrets.github_token }}
-        env:
-          ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
-
-      - name: Get Build Number
-        run: echo "$BUILD_NUMBER"
-
       - name: Build Docker images
         run: docker compose build
 
       - name: Push Docker images
-        env:
-          COMPOSE_HTTP_TIMEOUT: "600"
         run: docker compose push
 
       - name: Set Kubectl (US SV cluster)
         uses: Azure/k8s-set-context@v5
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}
-
-      - name: Test Kubectl
-        run: |
-          kubectl get nodes
-          kubectl get svc -n acedatacloud
 
       - name: Release with payment safety gates
         run: bash ./deploy/release.sh
