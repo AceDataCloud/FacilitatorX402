@@ -181,3 +181,19 @@ X402_ROBINHOOD_GAS_LIMIT = env.int("X402_ROBINHOOD_GAS_LIMIT", 500000)
 X402_ROBINHOOD_ASSET = env.str("X402_ROBINHOOD_ASSET", "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168")
 X402_ROBINHOOD_PAY_TO = env.str("X402_ROBINHOOD_PAY_TO", "")
 X402_ROBINHOOD_EXACT_ENABLED = env.bool("X402_ROBINHOOD_EXACT_ENABLED", False)
+
+
+# New native-USDC rails are opt-in and use dedicated operational signers.
+from core.x402_networks import load_evm_exact_networks  # noqa: E402
+
+X402_EVM_EXACT_NETWORKS = load_evm_exact_networks(env)
+for _network in X402_EVM_EXACT_NETWORKS.values():
+    _prefix = f"X402_{_network['alias'].upper()}"
+    _network.update(
+        rpc_url=env.str(f"{_prefix}_RPC_URL", ""),
+        private_key=env.str(f"{_prefix}_SIGNER_PRIVATE_KEY", ""),
+        address=env.str(f"{_prefix}_SIGNER_ADDRESS", ""),
+        gas_limit=env.int(f"{_prefix}_GAS_LIMIT", 500000),
+    )
+    if not all(_network[key] for key in ("rpc_url", "private_key", "address")):
+        raise ValueError(f"{_prefix} requires RPC_URL, SIGNER_PRIVATE_KEY and SIGNER_ADDRESS")

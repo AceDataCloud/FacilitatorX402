@@ -17,6 +17,9 @@ retired after the official-v2 production cutover completed in July 2026.
 Solana devnet support exists behind configuration and is disabled by default.
 It is a testnet compatibility option, not a production rail.
 
+Additional native-USDC networks are available behind per-chain opt-in settings.
+See [EVM network setup](docs/x402-evm-networks.md); their presence in source is not a production enablement.
+
 ## API
 
 - `GET /healthz`: liveness and readiness probe.
