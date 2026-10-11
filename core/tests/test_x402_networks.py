@@ -22,3 +22,17 @@ def test_new_rail_requires_explicit_enable_and_valid_recipient(monkeypatch, alia
         monkeypatch.setenv(f"{prefix}_PAY_TO", invalid)
         with pytest.raises(ValueError, match="PAY_TO"):
             load_evm_exact_networks(environs.Env())
+
+
+@pytest.mark.parametrize("alias,chain_id,asset", NETWORK_CASES)
+def test_deployed_rail_receives_optional_secret_configuration(alias, chain_id, asset):
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    for relative in ["deploy/production/deployment.yaml", "deploy/production/reconciliation-cronjob.yaml"]:
+        source = (root / relative).read_text()
+        for field in ["EXACT_ENABLED", "PAY_TO", "RPC_URL", "SIGNER_PRIVATE_KEY", "SIGNER_ADDRESS", "GAS_LIMIT"]:
+            key = f"{alias.upper()}_{field}"
+            pattern = rf"(?m)^ +?- name: X402_{key}\n +valueFrom:\n +secretKeyRef:\n +name: x402\n +key: {key}\n +optional: true"
+            assert re.search(pattern, source), f"{relative} does not wire {key}"

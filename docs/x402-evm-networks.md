@@ -43,3 +43,12 @@ and settlement recovery work are drained. Only then disable its rail.
 
 Sources: [Circle USDC contracts](https://developers.circle.com/stablecoins/usdc-contract-addresses)
 and the [x402 EVM mechanism](https://github.com/x402-foundation/x402/tree/main/typescript/packages/mechanisms/evm).
+
+
+Kubernetes manifests read optional keys from the existing `x402` Secret. Secret
+keys omit the `X402_` prefix: for example `ARBITRUM_EXACT_ENABLED`,
+`ARBITRUM_PAY_TO`, `ARBITRUM_RPC_URL`, `ARBITRUM_SIGNER_PRIVATE_KEY`,
+`ARBITRUM_SIGNER_ADDRESS`, `ARBITRUM_GAS_LIMIT`. Repeat with the uppercase alias
+for each enabled chain. Only Facilitator receives RPC and operational signer
+keys; its Deployment and reconciliation CronJob use identical mappings.
+Absent keys keep the new network disabled.
