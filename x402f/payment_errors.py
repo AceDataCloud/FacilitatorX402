@@ -42,7 +42,7 @@ def payment_error(
     asset: str | None = None,
     charged: bool | None = None,
 ) -> dict[str, Any]:
-    code = REASON_TO_CODE.get(reason or "")
+    code = reason if reason in ERROR_SPECS else REASON_TO_CODE.get(reason or "")
     if code is None:
         code = "settlement_failed" if stage == "settle" else "payment_failed"
     message, retryable = ERROR_SPECS[code]

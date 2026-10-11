@@ -30,6 +30,8 @@ from x402.mechanisms.svm.types import ExactSvmPayload
 from x402.mechanisms.svm.utils import decode_transaction_from_payload, derive_ata
 from x402.schemas import PaymentPayload, PaymentRequirements, VerifyResponse
 
+from x402f.svm_errors import SvmSimulationError
+
 DEFAULT_COMPUTE_UNIT_LIMIT = 100_000
 DEFAULT_COMPUTE_UNIT_PRICE = 5_000
 ERR_DUPLICATE_TRANSFER = "invalid_exact_svm_payload_multiple_transfer_instructions"
@@ -192,10 +194,19 @@ class OutcomeExactSvmFacilitatorScheme(ExactSvmFacilitatorScheme):
                 if "TransactionErrorInstructionError((2, Fieldless(InvalidAccountData)))" in diagnostic
                 else ERR_SIMULATION_FAILED
             )
+            safe_diagnostic = {}
+            if isinstance(exc, SvmSimulationError):
+                safe_diagnostic = exc.diagnostic()
+                transfer_index = instructions.index(transfer)
+                if exc.is_insufficient_token_balance(transfer_index):
+                    reason = "insufficient_token_balance"
+                elif exc.is_missing_token_account(transfer_index):
+                    reason = ERR_PAYER_TOKEN_ACCOUNT_MISSING
             logger.warning(
-                "SVM payment simulation rejected: reason={} error_type={}",
+                "SVM payment simulation rejected: reason={} error_type={} diagnostic={}",
                 reason,
                 type(exc).__name__,
+                safe_diagnostic,
             )
             return VerifyResponse(is_valid=False, invalid_reason=reason, payer=payer)
         return VerifyResponse(is_valid=True, payer=payer)

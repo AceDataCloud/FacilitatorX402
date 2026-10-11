@@ -2,13 +2,20 @@ import base64
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+from solana.rpc.commitment import Confirmed
 from solders.hash import Hash
 from solders.keypair import Keypair
 from solders.message import Message
 from solders.transaction import VersionedTransaction
-from solders.transaction_status import TransactionConfirmationStatus
+from solders.transaction_status import (
+    InstructionErrorCustom,
+    TransactionConfirmationStatus,
+    TransactionErrorInstructionError,
+)
 
 from x402f.official_signer import DurableFacilitatorSvmSigner
+from x402f.svm_errors import SvmSimulationError
 
 
 def unsigned_transaction(fee_payer: Keypair) -> str:
@@ -54,3 +61,39 @@ def test_svm_status_requires_confirmed_or_finalized() -> None:
             value=[SimpleNamespace(err=None, confirmation_status=confirmation)]
         )
         assert signer.get_transaction_status(signature, "solana:test") == expected
+
+
+def test_simulation_preserves_instruction_error_and_verifies_signatures() -> None:
+    signer = object.__new__(DurableFacilitatorSvmSigner)
+    client = Mock()
+    signer._get_client = Mock(return_value=client)
+    error = TransactionErrorInstructionError(4, InstructionErrorCustom(1))
+    client.simulate_transaction.return_value = SimpleNamespace(value=SimpleNamespace(err=error))
+    encoded = unsigned_transaction(Keypair())
+
+    with pytest.raises(SvmSimulationError) as exc:
+        signer.simulate_transaction(encoded, "solana:test")
+
+    assert exc.value.error == error
+    assert exc.value.is_insufficient_token_balance(4)
+    assert not exc.value.is_insufficient_token_balance(2)
+    args, kwargs = client.simulate_transaction.call_args
+    assert bytes(args[0]) == base64.b64decode(encoded)
+    assert kwargs == {"sig_verify": True, "commitment": Confirmed}
+    assert encoded not in str(exc.value)
+    assert exc.value.diagnostic() == {
+        "transaction_error": "TransactionErrorInstructionError",
+        "instruction_index": 4,
+        "instruction_error": "InstructionErrorCustom",
+        "custom_error": 1,
+    }
+
+
+def test_simulation_success_does_not_broadcast() -> None:
+    signer = object.__new__(DurableFacilitatorSvmSigner)
+    client = Mock()
+    signer._get_client = Mock(return_value=client)
+    client.simulate_transaction.return_value = SimpleNamespace(value=SimpleNamespace(err=None))
+
+    assert signer.simulate_transaction(unsigned_transaction(Keypair()), "solana:test") is None
+    client.send_raw_transaction.assert_not_called()

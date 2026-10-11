@@ -37,6 +37,14 @@ and transaction construction. This service adds:
 - asset and recipient allowlists;
 - authenticated settlement and replay protection.
 
+Solana verification reports `insufficient_token_balance` when the USDC transfer
+simulation returns SPL Token's insufficient-funds error. This response is
+retryable and reports `charged: false`; the wallet must hold the quoted USDC
+amount before signing a fresh payment. Errors from wallet-added instructions
+and the facilitator's fee balance are not classified as a payer USDC shortfall.
+Internal simulation logs retain the instruction index and typed error code,
+without logging signed transactions, RPC response bodies, or RPC URLs.
+
 ## Configuration
 
 Database settings:

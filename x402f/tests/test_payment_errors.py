@@ -1,4 +1,6 @@
-from x402f.payment_errors import payment_error
+import pytest
+
+from x402f.payment_errors import ERROR_SPECS, payment_error
 
 
 def test_reason_mapping_is_centralized() -> None:
@@ -22,3 +24,8 @@ def test_settlement_uncertainty_never_claims_not_charged() -> None:
 def test_unknown_reasons_fail_closed() -> None:
     assert payment_error("future_reason", stage="verify")["code"] == "payment_failed"
     assert payment_error("future_reason", stage="settle")["code"] == "settlement_failed"
+
+
+@pytest.mark.parametrize("code", ERROR_SPECS)
+def test_canonical_public_error_codes_are_not_replaced(code: str) -> None:
+    assert payment_error(code, stage="verify")["code"] == code

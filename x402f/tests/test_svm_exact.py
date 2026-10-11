@@ -9,6 +9,12 @@ from solders.message import MessageV0
 from solders.null_signer import NullSigner
 from solders.pubkey import Pubkey
 from solders.transaction import VersionedTransaction
+from solders.transaction_status import (
+    InstructionErrorCustom,
+    InstructionErrorFieldless,
+    TransactionErrorFieldless,
+    TransactionErrorInstructionError,
+)
 from x402.mechanisms.svm.constants import (
     ERR_INVALID_COMPUTE_LIMIT,
     ERR_INVALID_COMPUTE_PRICE,
@@ -20,6 +26,7 @@ from x402.mechanisms.svm.constants import (
 from x402.mechanisms.svm.utils import derive_ata
 from x402.schemas import PaymentPayload, PaymentRequirements
 
+from x402f.svm_errors import SvmSimulationError
 from x402f.svm_exact import (
     ERR_AMOUNT_MISMATCH,
     ERR_COMPUTE_INSTRUCTION_COUNT,
@@ -344,3 +351,55 @@ def test_simulation_error_classification_is_narrow(diagnostic: str, expected: st
     assert result.is_valid is False
     assert result.invalid_reason == expected
     assert result.invalid_message is None
+
+
+@pytest.mark.parametrize("extra_count", [0, 1, 3])
+def test_insufficient_usdc_tracks_actual_transfer_instruction(extra_count: int) -> None:
+    from x402f.views_official import _response
+
+    payload, requirements, signer = payment(extras_before=[memo()] * extra_count)
+    signer.simulation_error = SvmSimulationError(
+        TransactionErrorInstructionError(2 + extra_count, InstructionErrorCustom(1))
+    )
+
+    result = verify(payload, requirements, signer)
+    response = _response(result)
+
+    assert result.is_valid is False
+    assert response.data["invalidReason"] == "insufficient_token_balance"
+    descriptor = response.data["extensions"]["acedatacloud"]["paymentError"]
+    assert descriptor["retryable"] is True
+    assert descriptor["charged"] is False
+    assert "invalidMessage" not in response.data
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (TransactionErrorInstructionError(3, InstructionErrorCustom(1)), "transaction_simulation_failed"),
+        (TransactionErrorInstructionError(2, InstructionErrorCustom(2)), "transaction_simulation_failed"),
+        (
+            TransactionErrorInstructionError(2, InstructionErrorFieldless.InvalidAccountData),
+            "payer_token_account_missing",
+        ),
+        (TransactionErrorFieldless.InsufficientFundsForFee, "transaction_simulation_failed"),
+        (TransactionErrorFieldless.BlockhashNotFound, "transaction_simulation_failed"),
+    ],
+)
+def test_other_simulation_failures_are_not_payer_usdc_shortfalls(error, expected: str) -> None:
+    payload, requirements, signer = payment(extras_after=[memo()])
+    signer.simulation_error = SvmSimulationError(error)
+
+    result = verify(payload, requirements, signer)
+
+    assert result.is_valid is False
+    assert result.invalid_reason == expected
+    assert result.invalid_message is None
+
+
+def test_diagnostics_never_include_arbitrary_exception_text() -> None:
+    error = SvmSimulationError(RuntimeError("rpc=https://private.example secret=signable-payload"))
+
+    assert error.diagnostic() == {"transaction_error": "RuntimeError"}
+    assert "private.example" not in str(error)
+    assert "signable-payload" not in str(error.diagnostic())
