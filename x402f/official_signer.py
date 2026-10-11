@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from hexbytes import HexBytes
+from solana.rpc.commitment import Confirmed
 from solders.signature import Signature
 from solders.transaction import VersionedTransaction
 from solders.transaction_status import TransactionConfirmationStatus
@@ -13,6 +14,8 @@ from x402.mechanisms.evm.data_suffix import append_data_suffix
 from x402.mechanisms.evm.signer import TransactionReceipt
 from x402.mechanisms.evm.signers import FacilitatorWeb3Signer
 from x402.mechanisms.svm.signers import FacilitatorKeypairSigner
+
+from x402f.svm_errors import SvmSimulationError
 
 _HEX_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
@@ -164,6 +167,14 @@ class DurableFacilitatorSvmSigner(FacilitatorKeypairSigner):
 
     def sign_transaction(self, tx_base64: str, fee_payer: str, network: str) -> str:
         return super().sign_transaction(tx_base64, fee_payer, network)
+
+    def simulate_transaction(self, tx_base64: str, network: str) -> None:
+        transaction = VersionedTransaction.from_bytes(base64.b64decode(tx_base64))
+        result = self._get_client(network).simulate_transaction(transaction, sig_verify=True, commitment=Confirmed)
+        if result.value.err is not None:
+            # The SDK flattens this typed error to RuntimeError text. Keep the
+            # instruction index and error code for classification and safe logs.
+            raise SvmSimulationError(result.value.err)
 
     def send_transaction(self, tx_base64: str, network: str) -> str:
         expected = self.transaction_signature(tx_base64)
