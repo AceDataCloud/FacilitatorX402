@@ -133,6 +133,42 @@ spec:
                   name: x402
                   key: POLYGON_GAS_LIMIT
                   optional: true
+            - name: X402_OPTIMISM_EXACT_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: OPTIMISM_EXACT_ENABLED
+                  optional: true
+            - name: X402_OPTIMISM_PAY_TO
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: OPTIMISM_PAY_TO
+                  optional: true
+            - name: X402_OPTIMISM_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: OPTIMISM_RPC_URL
+                  optional: true
+            - name: X402_OPTIMISM_SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: OPTIMISM_SIGNER_PRIVATE_KEY
+                  optional: true
+            - name: X402_OPTIMISM_SIGNER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: OPTIMISM_SIGNER_ADDRESS
+                  optional: true
+            - name: X402_OPTIMISM_GAS_LIMIT
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: OPTIMISM_GAS_LIMIT
+                  optional: true
             - name: X402_BASE_NETWORK
               value: eip155:8453
             - name: X402_BASE_CHAIN_ID
