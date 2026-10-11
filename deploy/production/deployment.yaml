@@ -169,6 +169,42 @@ spec:
                   name: x402
                   key: OPTIMISM_GAS_LIMIT
                   optional: true
+            - name: X402_AVALANCHE_EXACT_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: AVALANCHE_EXACT_ENABLED
+                  optional: true
+            - name: X402_AVALANCHE_PAY_TO
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: AVALANCHE_PAY_TO
+                  optional: true
+            - name: X402_AVALANCHE_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: AVALANCHE_RPC_URL
+                  optional: true
+            - name: X402_AVALANCHE_SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: AVALANCHE_SIGNER_PRIVATE_KEY
+                  optional: true
+            - name: X402_AVALANCHE_SIGNER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: AVALANCHE_SIGNER_ADDRESS
+                  optional: true
+            - name: X402_AVALANCHE_GAS_LIMIT
+              valueFrom:
+                secretKeyRef:
+                  name: x402
+                  key: AVALANCHE_GAS_LIMIT
+                  optional: true
             - name: X402_BASE_NETWORK
               value: eip155:8453
             - name: X402_BASE_CHAIN_ID
