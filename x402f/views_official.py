@@ -298,6 +298,9 @@ def _payment_identity(request_model: VerifyRequest | SettleRequest) -> PaymentId
 
 
 def _rail_policy(network: str) -> RailPolicy:
+    config = settings.X402_EVM_EXACT_NETWORKS.get(network)
+    if config is not None:
+        return RailPolicy(schemes=frozenset({"exact"}), asset=config["asset"], pay_to=config["pay_to"])
     policies = {
         settings.X402_BASE_NETWORK: RailPolicy(
             schemes=frozenset(
