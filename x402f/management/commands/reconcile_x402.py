@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
 
+from x402f import envar_policy
 from x402f.models import X402Authorization
 from x402f.official import SKALE_MAINNET
 from x402f.svm_recurring import is_recurring_payload
@@ -27,6 +28,8 @@ LEGACY_NETWORKS = {
 
 
 def reconcile_record(record: X402Authorization) -> str:
+    if str(record.verification_id or "").startswith("envar:legacy:"):
+        return "legacy_review"
     stored_network = str(record.payment_requirements.get("network") or "")
     if not stored_network:
         return "invalid"
@@ -55,6 +58,8 @@ def reconcile_record(record: X402Authorization) -> str:
     signer = configured.signer_for(network)
     transaction_status = _transaction_status(signer, record.transaction_hash, network)
     if transaction_status == "confirmed":
+        if envar_policy.is_envar(record) and not envar_policy.transfer_proven(record, signer):
+            return "pending_proof"
         updated = X402Authorization.objects.filter(
             pk=record.pk,
             status=X402Authorization.Status.SETTLING,
@@ -62,6 +67,13 @@ def reconcile_record(record: X402Authorization) -> str:
         ).update(status=X402Authorization.Status.SETTLED, settled_at=timezone.now(), settling_started_at=None)
         return "settled" if updated == 1 else "conflict"
     if transaction_status == "failed":
+        if envar_policy.is_envar(record):
+            updated = X402Authorization.objects.filter(
+                pk=record.pk,
+                status=X402Authorization.Status.SETTLING,
+                transaction_hash=record.transaction_hash,
+            ).update(status=X402Authorization.Status.FAILED, settling_started_at=None)
+            return "failed" if updated == 1 else "conflict"
         updated = X402Authorization.objects.filter(
             pk=record.pk,
             status=X402Authorization.Status.SETTLING,

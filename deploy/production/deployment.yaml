@@ -103,6 +103,14 @@ spec:
               value: "500000"
             - name: X402_TX_TIMEOUT_SECONDS
               value: "120"
+            - name: X402_ENVAR_DELEGATION_ENABLED
+              value: "false"
+            - name: X402_ENVAR_DELEGATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: ENVAR_DELEGATION_TOKEN
+                  name: x402
+                  optional: true
             - name: X402_SETTLE_TOKEN
               valueFrom:
                 secretKeyRef:

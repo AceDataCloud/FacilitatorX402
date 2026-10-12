@@ -41,6 +41,13 @@ class X402Authorization(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["verification_id"],
+                condition=models.Q(verification_id__startswith="envar:"),
+                name="x402_envar_intent_unique",
+            ),
+        ]
 
     def mark_settled(self, tx_hash: str, settled_amount: str | None = None) -> None:
         self.status = self.Status.SETTLED

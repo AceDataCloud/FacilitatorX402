@@ -574,7 +574,7 @@ class OfficialViewTests(TestCase):
         )
 
     @patch("x402f.views_official.build_configured_facilitator")
-    def test_confirmed_reconciliation_returns_receipt_when_final_db_write_fails(self, factory) -> None:
+    def test_confirmed_reconciliation_waits_when_final_db_write_fails(self, factory) -> None:
         factory.side_effect = self._facilitator_factory
         body = self.body
         verify = self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json")
@@ -590,5 +590,26 @@ class OfficialViewTests(TestCase):
             filtered.return_value.update.side_effect = RuntimeError("database unavailable")
             response = self._settle(body)
 
-        self.assertTrue(response.json()["success"])
+        self.assertFalse(response.json()["success"])
         self.assertEqual(response.json()["transaction"], record.transaction_hash)
+        self.assertEqual(X402Authorization.objects.get().status, X402Authorization.Status.SETTLING)
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_confirmed_reconciliation_waits_when_final_update_matches_no_rows(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        body = self.body
+        assert self.client.post(reverse("x402:verify"), data=json.dumps(body), content_type="application/json").json()[
+            "isValid"
+        ]
+        record = X402Authorization.objects.get()
+        record.status = X402Authorization.Status.SETTLING
+        record.transaction_hash = "0x" + "ab" * 32
+        record.save(update_fields=["status", "transaction_hash"])
+        factory.side_effect = None
+        factory.return_value = (SimpleNamespace(), FakeSigner())
+        with patch("x402f.views_official.X402Authorization.objects.filter") as filtered:
+            filtered.return_value.update.return_value = 0
+            response = self._settle(body)
+        self.assertFalse(response.json()["success"])
+        self.assertEqual(response.json()["transaction"], record.transaction_hash)
+        self.assertEqual(X402Authorization.objects.get().status, X402Authorization.Status.SETTLING)
