@@ -47,6 +47,42 @@ spec:
                       optional: false
                 - name: PGSQL_DATABASE_FACILITATOR
                   value: acedatacloud_facilitator
+                - name: X402_ARBITRUM_EXACT_ENABLED
+                  valueFrom:
+                    secretKeyRef:
+                      name: x402
+                      key: ARBITRUM_EXACT_ENABLED
+                      optional: true
+                - name: X402_ARBITRUM_PAY_TO
+                  valueFrom:
+                    secretKeyRef:
+                      name: x402
+                      key: ARBITRUM_PAY_TO
+                      optional: true
+                - name: X402_ARBITRUM_RPC_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: x402
+                      key: ARBITRUM_RPC_URL
+                      optional: true
+                - name: X402_ARBITRUM_SIGNER_PRIVATE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: x402
+                      key: ARBITRUM_SIGNER_PRIVATE_KEY
+                      optional: true
+                - name: X402_ARBITRUM_SIGNER_ADDRESS
+                  valueFrom:
+                    secretKeyRef:
+                      name: x402
+                      key: ARBITRUM_SIGNER_ADDRESS
+                      optional: true
+                - name: X402_ARBITRUM_GAS_LIMIT
+                  valueFrom:
+                    secretKeyRef:
+                      name: x402
+                      key: ARBITRUM_GAS_LIMIT
+                      optional: true
                 - name: X402_BASE_NETWORK
                   value: eip155:8453
                 - name: X402_BASE_CHAIN_ID

@@ -200,6 +200,22 @@ def build_configured_registry(
         signers[ROBINHOOD_MAINNET] = signer
         register_evm_schemes(facilitator, signer, [ROBINHOOD_MAINNET])
 
+    for network_id, config in settings.X402_EVM_EXACT_NETWORKS.items():
+        if networks is not None and network_id not in networks:
+            continue
+        signer = _evm_signer(
+            label=config["label"],
+            rpc_url=config["rpc_url"],
+            private_key=config["private_key"],
+            address=config["address"],
+            chain_id=config["chain_id"],
+            gas_limit=config["gas_limit"],
+            on_transaction_prepared=on_transaction_prepared,
+            on_transaction_broadcast=on_transaction_broadcast,
+        )
+        signers[network_id] = signer
+        register_evm_schemes(facilitator, signer, [network_id])
+
     solana_settings = (
         (
             settings.X402_SOLANA_MAINNET_ENABLED,
@@ -305,6 +321,11 @@ def configured_supported_response() -> SupportedResponse:
             )
         )
         svm_addresses.append(devnet_address)
+    for network_id, config in settings.X402_EVM_EXACT_NETWORKS.items():
+        if not config.get("address"):
+            raise RuntimeError(f"{config['label']} requires a configured signer address")
+        kinds.append(SupportedKind(x402Version=2, scheme="exact", network=network_id))
+        evm_addresses.append(config["address"])
     if not kinds:
         raise RuntimeError("No x402 facilitator payment kinds are enabled")
     signers = {}
