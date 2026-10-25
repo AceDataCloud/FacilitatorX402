@@ -2669,14 +2669,14 @@ doc = ["sphinx"]
 
 [[package]]
 name = "tencentcloud-sdk-python"
-version = "3.1.188"
+version = "3.1.192"
 description = "Tencent Cloud SDK for Python"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "tencentcloud_sdk_python-3.1.188-py2.py3-none-any.whl", hash = "sha256:12935c82417152052aac28be780b27c73d8ab50fdf9e63d2e7d7bba8d2959140"},
-    {file = "tencentcloud_sdk_python-3.1.188.tar.gz", hash = "sha256:aae0da305e693e5d7427c05edf69b3d35b9dd40db64a350b4d3fc3d57be70094"},
+    {file = "tencentcloud_sdk_python-3.1.192-py2.py3-none-any.whl", hash = "sha256:d2061674131bfe25d376829b8b58388ec97be9d155b26407010fa86a7c920aa8"},
+    {file = "tencentcloud_sdk_python-3.1.192.tar.gz", hash = "sha256:62490f094b5aeb7ee248519ebea5835eb9d06bd2020942bf6498464990b536d7"},
 ]
 
 [package.dependencies]
