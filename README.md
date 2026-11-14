@@ -55,6 +55,11 @@ Database settings:
 - `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`
 - `PGSQL_DATABASE_FACILITATOR`
 
+Runtime, reconciliation and preflight manifests read these fields from
+`pgsql-facilitator`. The existing migration Job retains `pgsql`. Provision the
+new runtime grants before a future release; changing Secret references does not
+authorize resuming a stopped facilitator or its suspended reconciliation task.
+
 Core settings:
 
 - `APP_ENV`, `APP_SECRET_KEY`, `ALLOWED_HOSTS`
