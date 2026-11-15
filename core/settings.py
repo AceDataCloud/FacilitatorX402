@@ -13,9 +13,14 @@ env.read_env(BASE_DIR / ".env")
 
 APP_ENV = env.str("APP_ENV", "local")
 
-SECRET_KEY = env.str("APP_SECRET_KEY", "change-me")
+SECRET_KEY = env.str("APPLICATION_SECRET_KEY", "local-facilitator-development-only")
 
 DEBUG = env.bool("DEBUG", APP_ENV != "production")
+
+if env.str("APP_ENV", "") == "production" and not env.str("APPLICATION_SECRET_KEY", ""):
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured("APPLICATION_SECRET_KEY is required in production")
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*"])
 APPEND_SLASH = False

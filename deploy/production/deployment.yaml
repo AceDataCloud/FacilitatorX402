@@ -27,11 +27,11 @@ spec:
               value: production
             - name: ALLOWED_HOSTS
               value: facilitator.acedata.cloud,localhost,127.0.0.1
-            - name: APP_SECRET_KEY
+            - name: APPLICATION_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  key: SECRET_KEY
-                  name: app
+                  key: APPLICATION_SECRET_KEY
+                  name: facilitator-application
                   optional: false
             - name: PGSQL_DATABASE_FACILITATOR
               value: acedatacloud_facilitator
