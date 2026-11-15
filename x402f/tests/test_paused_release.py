@@ -36,6 +36,12 @@ def test_invalid_restore_configuration_is_rejected(environ):
         renderer.release_configuration(environ)
 
 
+@pytest.mark.parametrize("tag", ["", "bad/tag", "../latest", "test\nvalue"])
+def test_invalid_image_tag_is_rejected(tag):
+    with pytest.raises(ValueError, match="TAG"):
+        renderer.validate_tag(tag)
+
+
 def test_restore_only_receives_requested_signer():
     mode, rails = renderer.release_configuration(
         {
@@ -144,6 +150,7 @@ def test_default_release_stages_without_starting_jobs(tmp_path):
     assert "_SIGNER_PRIVATE_KEY" not in applied
     assert not any(call[0] in {"create", "logs", "rollout"} for call in calls)
     assert "kind: Job\n" not in applied
+    assert not any(call[:2] == ["delete", "job"] for call in calls)
 
 
 @pytest.mark.parametrize("restore", [False, True])

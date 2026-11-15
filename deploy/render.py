@@ -43,9 +43,13 @@ def release_configuration(environ):
     return mode, rails
 
 
-def render(template, tag, mode, rails):
+def validate_tag(tag):
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", tag):
         raise ValueError("TAG is not a valid image tag")
+
+
+def render(template, tag, mode, rails):
+    validate_tag(tag)
     text = template.replace("${TAG}", tag)
     if mode == "paused":
         return text
@@ -84,6 +88,7 @@ def main():
     try:
         mode, rails = release_configuration(os.environ)
         if args.check_config:
+            validate_tag(os.environ.get("TAG", ""))
             print(mode)
             return
         if args.template is None:

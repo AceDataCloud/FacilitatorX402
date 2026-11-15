@@ -15,6 +15,7 @@ ORIGINAL_CRONJOB_FILE="$SNAPSHOT_DIR/reconciliation-cronjob.json"
 CUTOVER_COMPLETE=0
 QUIESCE_STARTED=0
 ORIGINAL_CRONJOB_EXISTS=0
+TEMPORARY_JOBS=()
 
 snapshot_cronjob() {
 	local name="$1"
@@ -51,8 +52,10 @@ rollback() {
 on_exit() {
 	exit_code=$?
 	trap - EXIT
-	kubectl delete job "$PREFLIGHT_JOB" "$MIGRATION_JOB" "$RECONCILE_SMOKE_JOB" \
-		-n acedatacloud --ignore-not-found >/dev/null 2>&1 || true
+	if [ "${#TEMPORARY_JOBS[@]}" -gt 0 ]; then
+		kubectl delete job "${TEMPORARY_JOBS[@]}" \
+			-n acedatacloud --ignore-not-found >/dev/null 2>&1 || true
+	fi
 	if [ "$QUIESCE_STARTED" -eq 1 ] && [ "$CUTOVER_COMPLETE" -ne 1 ] && ! rollback; then
 		exit_code=1
 	fi
@@ -92,7 +95,8 @@ if [ "$RELEASE_MODE" = paused ]; then
 	if [ -n "$PODS" ]; then
 		kubectl wait --for=delete pod -l app=facilitator-backend -n acedatacloud --timeout=300s
 	fi
-	if [ -n "$(kubectl get pod -l app=facilitator-reconcile -n acedatacloud -o name)" ]; then
+	if [ -n "$(kubectl get pod -l app=facilitator-reconcile -n acedatacloud \
+		--field-selector=status.phase!=Succeeded,status.phase!=Failed -o name)" ]; then
 		echo "Stop existing reconciliation Jobs before staging a paused release" >&2
 		exit 1
 	fi
@@ -113,6 +117,7 @@ if [ -n "$PODS" ]; then
 	kubectl wait --for=delete pod -l app=facilitator-backend -n acedatacloud --timeout=300s
 fi
 
+TEMPORARY_JOBS+=("$PREFLIGHT_JOB")
 # shellcheck disable=SC2016
 sed -e 's/\${TAG}/'"$TAG"'/g' -e 's/\${PREFLIGHT_JOB}/'"$PREFLIGHT_JOB"'/g' \
 	deploy/production/preflight-job.yaml | kubectl apply -f -
@@ -121,6 +126,7 @@ if ! kubectl wait --for=condition=complete "job/$PREFLIGHT_JOB" -n acedatacloud 
 	exit 1
 fi
 
+TEMPORARY_JOBS+=("$MIGRATION_JOB")
 # shellcheck disable=SC2016
 sed -e 's/\${TAG}/'"$TAG"'/g' -e 's/\${MIGRATION_JOB}/'"$MIGRATION_JOB"'/g' \
 	deploy/production/migration-job.yaml | kubectl apply -f -
@@ -133,6 +139,7 @@ TAG="$TAG" sh deploy/run.sh
 kubectl rollout status deployment/facilitator-backend -n acedatacloud --timeout=600s
 
 kubectl delete job "$RECONCILE_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
+TEMPORARY_JOBS+=("$RECONCILE_SMOKE_JOB")
 kubectl create job "$RECONCILE_SMOKE_JOB" -n acedatacloud --from=cronjob/facilitator-reconcile
 if ! kubectl wait --for=condition=complete "job/$RECONCILE_SMOKE_JOB" -n acedatacloud --timeout=330s; then
 	kubectl logs "job/$RECONCILE_SMOKE_JOB" -n acedatacloud
