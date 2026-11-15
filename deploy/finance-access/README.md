@@ -9,7 +9,12 @@ list, financial workload mutation, ServiceAccount token or RBAC authority.
 Only `system:serviceaccount:acedatacloud:finance-publisher` may update the
 Facilitator and reconciliation workload. It is a trusted financial release
 identity; ordinary CI must never receive its credential. Controller exceptions
-are restricted to Pod/ReplicaSet creation by the named system controllers.
+are restricted to Pod/ReplicaSet creation by the named system controllers and
+creation of a `facilitator-reconcile-*` Job by the CronJob controller with a
+controlling `batch/v1` ownerReference to `facilitator-reconcile`. An ordinary
+publisher cannot gain access by copying that ownerReference. Absent request
+subresources are handled explicitly, so ordinary CREATE requests are validated
+instead of failing during expression evaluation.
 
 RBAC blocks GET/LIST of signing Secrets; admission blocks indirect mounts,
 private env references, financial identities, host paths and privileged access.
