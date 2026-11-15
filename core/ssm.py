@@ -67,6 +67,9 @@ def load_ssm_secrets() -> None:
     injected = 0
     skipped = 0
     for key, value in secrets.items():
+        if key == "APP_SECRET_KEY" or key.endswith("_DJANGO_SECRET_KEY"):
+            skipped += 1
+            continue
         if key in os.environ:
             skipped += 1
         else:

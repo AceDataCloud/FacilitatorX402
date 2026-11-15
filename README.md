@@ -65,7 +65,7 @@ not authorize resuming a stopped facilitator or its suspended reconciliation tas
 
 Core settings:
 
-- `APP_ENV`, `APP_SECRET_KEY`, `ALLOWED_HOSTS`
+- `APP_ENV`, `APPLICATION_SECRET_KEY`, `ALLOWED_HOSTS`
 - `X402_SETTLE_TOKEN`
 - `X402_FACILITATOR_PUBLIC_URL`
 - `X402_SETTLEMENT_LEASE_SECONDS`
@@ -119,3 +119,8 @@ and rolls back the Deployment and CronJob if validation fails.
 
 See [docs/migration.md](docs/migration.md) for the completed official-v2
 migration record and rollback constraints.
+
+## Application secret configuration
+
+Use `APPLICATION_SECRET_KEY` from this service's independent application Secret.
+See [configuration migration](plans/application-secrets/README.md) for names and deployment prerequisites.
