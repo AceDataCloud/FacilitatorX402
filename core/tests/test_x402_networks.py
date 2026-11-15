@@ -32,9 +32,12 @@ def test_deployed_rail_receives_optional_secret_configuration(alias, chain_id, a
     root = Path(__file__).resolve().parents[2]
     for relative in ["deploy/production/deployment.yaml", "deploy/production/reconciliation-cronjob.yaml"]:
         source = (root / relative).read_text()
-        for field in ["EXACT_ENABLED", "PAY_TO", "RPC_URL", "SIGNER_PRIVATE_KEY", "SIGNER_ADDRESS", "GAS_LIMIT"]:
+        enabled = source.split(f"- name: X402_{alias.upper()}_EXACT_ENABLED", 1)[1].split("- name:", 1)[0]
+        assert 'value: "false"' in enabled
+        assert f"X402_{alias.upper()}_SIGNER_PRIVATE_KEY" not in source
+        for field in ["PAY_TO", "RPC_URL", "SIGNER_ADDRESS", "GAS_LIMIT"]:
             key = f"{alias.upper()}_{field}"
-            secret_name = "x402-signer-private" if field == "SIGNER_PRIVATE_KEY" else "x402"
+            secret_name = "x402"
             pattern = (
                 rf"(?m)^ +?- name: X402_{key}\n +valueFrom:\n +secretKeyRef:"
                 rf"\n +name: {secret_name}\n +key: {key}\n +optional: true"

@@ -1,3 +1,8 @@
+> Current deployment behavior: production releases now stage with payments
+> paused. The historical cutover and rollback steps below are not a payment
+> restoration command. Follow [paused releases](paused-releases.md) for current
+> staging, explicit rail restoration and failure behavior.
+
 # Official x402 v2 Facilitator Migration
 
 This document describes the migration completed by

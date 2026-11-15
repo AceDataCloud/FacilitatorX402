@@ -53,15 +53,17 @@ jobs:
           COMPOSE_HTTP_TIMEOUT: "600"
         run: docker compose push
 
-      - name: Set Kubectl (US SV cluster)
+      - name: Set Kubectl (Hong Kong)
         uses: Azure/k8s-set-context@v5
         with:
-          kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}
+          kubeconfig: ${{ secrets.KUBE_CONFIG_HK }}
 
       - name: Test Kubectl
         run: |
-          kubectl get nodes
-          kubectl get svc -n acedatacloud
+          kubectl get deployment/facilitator-backend -n acedatacloud
+          kubectl get service/facilitator-backend -n acedatacloud
 
-      - name: Release with payment safety gates
+      - name: Stage release with payments paused
+        env:
+          FACILITATOR_RELEASE_MODE: paused
         run: bash ./deploy/release.sh

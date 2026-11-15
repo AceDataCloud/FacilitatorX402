@@ -110,15 +110,23 @@ on port 8000.
 
 - `.github/workflows/ci.yaml`: PR test, lint, and Docker build.
 - `.github/workflows/deploy.yaml`: manual production build and deployment from
-  `main` through `deploy/run.sh`.
+  `main` through `deploy/run.sh` on the Hong Kong cluster.
 
-Production deployment uses a Recreate strategy to prevent old and official
-settlement semantics from overlapping. The runbook quiesces traffic, checks
-legacy records, applies migrations, deploys two replicas, starts reconciliation,
-and rolls back the Deployment and CronJob if validation fails.
+Production templates default to **paused**: zero web replicas, suspended
+reconciliation, all payment rails disabled and no signer private-key references.
+Pushes and manual runs of the deployment workflow stage the new image in those
+paused templates. They do not connect to the database or run preflight,
+migration, reconciliation or live payment checks. Existing reconciliation Pods
+must be stopped before staging; suspending a CronJob does not stop an existing Job.
 
-See [docs/migration.md](docs/migration.md) for the completed official-v2
-migration record and rollback constraints.
+Payment restoration is a separate, explicitly authorized operator action. See
+[paused releases and restoration](docs/paused-releases.md) for required checks,
+rail selection and failure behavior. Ordinary application deployment does not
+restore payments. A failed release rolls back the image while preserving zero
+replicas, disabled rails, absent signer key references and suspended reconciliation.
+
+See [docs/migration.md](docs/migration.md) for the historical official-v2
+migration record and schema rollback constraints.
 
 ## Application secret configuration
 
@@ -126,11 +134,16 @@ Use `APPLICATION_SECRET_KEY` from this service's independent application Secret.
 See [configuration migration](plans/application-secrets/README.md) for names and deployment prerequisites.
 
 
-## Signing credential isolation
+## Payment configuration
 
-Base, Solana, SKALE and optional Arbitrum signing keys are injected only from
-`x402-signer-private`; public RPC/pay-to metadata stays in `x402`. Ordinary
-worker CI cannot read or mount the signing Secret or mutate financial workloads.
-The Facilitator release credential is a dedicated trusted financial identity.
-A release exits before migrations or reconciliation jobs when the deployment is
-at zero replicas, preserving an operator's payment pause.
+Keep RPC URLs, approved assets, receiving addresses and the settlement caller
+token in `x402`. Keep only signer private keys in `x402-private`: each enabled
+network reads its own `<NETWORK>_SIGNER_PRIVATE_KEY` field. The Facilitator never
+mounts sweep or buyback configuration. Database and application credentials
+remain in `pgsql-facilitator` and `facilitator-application`.
+
+The Hong Kong deployment uses its repository-scoped `KUBE_CONFIG_HK`. Ordinary
+Backend and worker processes do not receive signer private fields. Production
+release templates contain no private keys while payments are paused. Keep
+reconciliation suspended during migration and validate database access and chain
+RPCs before enabling the selected payment networks.
