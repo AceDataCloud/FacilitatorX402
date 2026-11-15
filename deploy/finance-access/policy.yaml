@@ -12,7 +12,7 @@ spec:
         resources: ["*", pods/exec, pods/attach, pods/ephemeralcontainers, pods/proxy, deployments/scale]
   matchConditions:
     - name: finance-namespace
-      expression: request.namespace == 'acedatacloud'
+      expression: has(request.namespace) && request.namespace == 'acedatacloud'
   variables:
     - name: publisher
       expression: request.userInfo.username == 'system:serviceaccount:acedatacloud:finance-publisher'
