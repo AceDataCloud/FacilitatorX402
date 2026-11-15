@@ -4,38 +4,58 @@ metadata:
   name: acedata-finance-isolation
 spec:
   failurePolicy: Fail
-  matchConstraints:
-    resourceRules:
-      - apiGroups: ["", apps, batch, rbac.authorization.k8s.io, networking.k8s.io]
-        apiVersions: ["*"]
-        operations: [CREATE, UPDATE, DELETE, CONNECT]
-        resources: ["*", pods/exec, pods/attach, pods/ephemeralcontainers, pods/proxy, deployments/scale]
   matchConditions:
-    - name: finance-namespace
-      expression: has(request.namespace) && request.namespace == 'acedatacloud'
-  variables:
-    - name: publisher
-      expression: request.userInfo.username == 'system:serviceaccount:acedatacloud:finance-publisher'
-    - name: controller
-      expression: "request.kind.kind in ['Pod','ReplicaSet'] && request.userInfo.username in ['system:kube-controller-manager','system:serviceaccount:kube-system:deployment-controller','system:serviceaccount:kube-system:replicaset-controller','system:serviceaccount:kube-system:job-controller']"
-    - name: currentSpec
-      expression: "object == null ? null : request.kind.kind == 'Pod' && has(object.spec) ? object.spec : request.kind.kind in ['Deployment','ReplicaSet','StatefulSet','DaemonSet','Job'] && has(object.spec) && has(object.spec.template) ? object.spec.template.spec : request.kind.kind == 'CronJob' && has(object.spec) && has(object.spec.jobTemplate) ? object.spec.jobTemplate.spec.template.spec : null"
-    - name: previousSpec
-      expression: "oldObject == null ? null : request.kind.kind == 'Pod' && has(oldObject.spec) ? oldObject.spec : request.kind.kind in ['Deployment','ReplicaSet','StatefulSet','DaemonSet','Job'] && has(oldObject.spec) && has(oldObject.spec.template) ? oldObject.spec.template.spec : request.kind.kind == 'CronJob' && has(oldObject.spec) && has(oldObject.spec.jobTemplate) ? oldObject.spec.jobTemplate.spec.template.spec : null"
-    - name: specs
-      expression: "[variables.currentSpec,variables.previousSpec].filter(s, s != null)"
-    - name: containers
-      expression: "variables.specs.size() == 0 ? [] : variables.specs[0].containers + (has(variables.specs[0].initContainers) ? variables.specs[0].initContainers : []) + (has(variables.specs[0].ephemeralContainers) ? variables.specs[0].ephemeralContainers : []) + (variables.specs.size() < 2 ? [] : variables.specs[1].containers + (has(variables.specs[1].initContainers) ? variables.specs[1].initContainers : []) + (has(variables.specs[1].ephemeralContainers) ? variables.specs[1].ephemeralContainers : []))"
+  - expression: has(request.namespace) && request.namespace == 'acedatacloud'
+    name: finance-namespace
+  matchConstraints:
+    matchPolicy: Equivalent
+    namespaceSelector: {}
+    objectSelector: {}
+    resourceRules:
+    - apiGroups:
+      - ''
+      - apps
+      - batch
+      - rbac.authorization.k8s.io
+      - networking.k8s.io
+      apiVersions:
+      - '*'
+      operations:
+      - CREATE
+      - UPDATE
+      - DELETE
+      - CONNECT
+      resources:
+      - '*'
+      - pods/exec
+      - pods/attach
+      - pods/ephemeralcontainers
+      - pods/proxy
+      - deployments/scale
+      scope: '*'
   validations:
-    - expression: "variables.publisher || variables.controller || request.subResource == 'status' || !(request.name in ['facilitator-backend','facilitator-reconcile','x402-signer-private','x402-sweep-private','ace-burn-operator-private','x402'] || request.name.startsWith('facilitator-backend-') || request.name.startsWith('facilitator-preflight-') || request.name.startsWith('facilitator-migrate-') || request.name.startsWith('facilitator-reconcile-'))"
-      message: Financial resources require the dedicated financial publisher
-    - expression: "variables.publisher || variables.controller || variables.specs.all(s, (!has(s.serviceAccountName) || !(s.serviceAccountName in ['finance-publisher','facilitator-signer'])) && (!has(s.volumes) || s.volumes.all(v, !has(v.secret) || !(v.secret.secretName in ['x402','x402-signer-private','x402-sweep-private','ace-burn-operator-private']))) && (!has(s.volumes) || s.volumes.all(v, !has(v.projected) || !has(v.projected.sources) || v.projected.sources.all(p, !has(p.secret) || !(p.secret.name in ['x402','x402-signer-private','x402-sweep-private','ace-burn-operator-private'])))))"
-      message: Ordinary workloads cannot mount financial secrets or use financial identities
-    - expression: "variables.publisher || variables.controller || variables.containers.all(c, (!has(c.envFrom) || c.envFrom.all(e, !has(e.secretRef) || !(e.secretRef.name in ['x402','x402-signer-private','x402-sweep-private','ace-burn-operator-private']))) && (!has(c.env) || c.env.all(e, !has(e.valueFrom) || !has(e.valueFrom.secretKeyRef) || !(e.valueFrom.secretKeyRef.name in ['x402-signer-private','x402-sweep-private','ace-burn-operator-private']) && (e.valueFrom.secretKeyRef.name != 'x402' || e.valueFrom.secretKeyRef.key in ['SETTLE_TOKEN','FACILITATOR_URL','BASE_RPC_URL','BASE_PAY_TO','BASE_ASSET','BASE_FACILITATOR_ADDRESS','SOLANA_RPC_URL','SOLANA_PAY_TO','SOLANA_SIGNER_ADDRESS','SOLANA_ASSET','SKALE_PAY_TO','SKALE_USDC_ASSET','SKALE_FACILITATOR_ADDRESS']))))"
-      message: Ordinary workloads cannot inject financial private fields
-    - expression: "variables.publisher || variables.specs.all(s, (!has(s.hostPID) || !s.hostPID) && (!has(s.hostIPC) || !s.hostIPC) && (!has(s.hostNetwork) || !s.hostNetwork) && (!has(s.volumes) || s.volumes.all(v, !has(v.hostPath) && !has(v.csi))))"
-      message: Ordinary workloads cannot access signing keys through the host
-    - expression: "variables.publisher || variables.containers.all(c, !has(c.securityContext) || ((!has(c.securityContext.privileged) || !c.securityContext.privileged) && (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.all(x, x == 'NET_BIND_SERVICE'))))"
-      message: Ordinary workloads cannot add privileged access
-    - expression: "variables.publisher || !(request.kind.kind in ['Role','RoleBinding','ServiceAccount'])"
-      message: Only the trusted financial publisher can change namespaced access
+  - expression: variables.publisher || variables.controller || (has(request.subResource) && request.subResource == 'status') || !(request.name in ['facilitator-backend','facilitator-reconcile','x402-signer-private','finance-publisher-token','x402-sweep-private','ace-burn-operator-private','x402'] || request.name.startsWith('facilitator-backend-') || request.name.startsWith('facilitator-preflight-') || request.name.startsWith('facilitator-migrate-') || request.name.startsWith('facilitator-reconcile-'))
+    message: Financial resources require the dedicated financial publisher
+  - expression: variables.publisher || variables.controller || variables.specs.all(s, (!has(s.serviceAccountName) || !(s.serviceAccountName in ['finance-publisher','facilitator-signer'])) && (!has(s.volumes) || s.volumes.all(v, !has(v.secret) || !(v.secret.secretName in ['x402','x402-signer-private','finance-publisher-token','x402-sweep-private','ace-burn-operator-private']))) && (!has(s.volumes) || s.volumes.all(v, !has(v.projected) || !has(v.projected.sources) || v.projected.sources.all(p, !has(p.secret) || !(p.secret.name in ['x402','x402-signer-private','finance-publisher-token','x402-sweep-private','ace-burn-operator-private'])))))
+    message: Ordinary workloads cannot mount financial secrets or use financial identities
+  - expression: variables.publisher || variables.controller || variables.containers.all(c, (!has(c.envFrom) || c.envFrom.all(e, !has(e.secretRef) || !(e.secretRef.name in ['x402','x402-signer-private','finance-publisher-token','x402-sweep-private','ace-burn-operator-private']))) && (!has(c.env) || c.env.all(e, !has(e.valueFrom) || !has(e.valueFrom.secretKeyRef) || !(e.valueFrom.secretKeyRef.name in ['x402-signer-private','finance-publisher-token','x402-sweep-private','ace-burn-operator-private']) && (e.valueFrom.secretKeyRef.name != 'x402' || e.valueFrom.secretKeyRef.key in ['SETTLE_TOKEN','FACILITATOR_URL','BASE_RPC_URL','BASE_PAY_TO','BASE_ASSET','BASE_FACILITATOR_ADDRESS','SOLANA_RPC_URL','SOLANA_PAY_TO','SOLANA_SIGNER_ADDRESS','SOLANA_ASSET','SKALE_PAY_TO','SKALE_USDC_ASSET','SKALE_FACILITATOR_ADDRESS']))))
+    message: Ordinary workloads cannot inject financial private fields
+  - expression: variables.publisher || variables.specs.all(s, (!has(s.hostPID) || !s.hostPID) && (!has(s.hostIPC) || !s.hostIPC) && (!has(s.hostNetwork) || !s.hostNetwork) && (!has(s.volumes) || s.volumes.all(v, !has(v.hostPath) && !has(v.csi))))
+    message: Ordinary workloads cannot access signing keys through the host
+  - expression: variables.publisher || variables.containers.all(c, !has(c.securityContext) || ((!has(c.securityContext.privileged) || !c.securityContext.privileged) && (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.all(x, x == 'NET_BIND_SERVICE'))))
+    message: Ordinary workloads cannot add privileged access
+  - expression: variables.publisher || !(request.kind.kind in ['Role','RoleBinding','ServiceAccount'])
+    message: Only the trusted financial publisher can change namespaced access
+  variables:
+  - expression: request.userInfo.username == 'system:serviceaccount:acedatacloud:finance-publisher'
+    name: publisher
+  - expression: request.kind.kind in ['Pod','ReplicaSet'] && request.userInfo.username in ['system:kube-controller-manager','system:serviceaccount:kube-system:deployment-controller','system:serviceaccount:kube-system:replicaset-controller','system:serviceaccount:kube-system:job-controller'] || (request.operation == 'CREATE' && request.kind.kind == 'Job' && request.userInfo.username in ['system:kube-controller-manager','system:serviceaccount:kube-system:cronjob-controller'] && object != null && has(object.metadata.ownerReferences) && object.metadata.name.startsWith('facilitator-reconcile-') && object.metadata.ownerReferences.exists(r, r.apiVersion == 'batch/v1' && r.kind == 'CronJob' && r.name == 'facilitator-reconcile' && has(r.controller) && r.controller))
+    name: controller
+  - expression: 'object == null ? null : request.kind.kind == ''Pod'' && has(object.spec) ? object.spec : request.kind.kind in [''Deployment'',''ReplicaSet'',''StatefulSet'',''DaemonSet'',''Job''] && has(object.spec) && has(object.spec.template) ? object.spec.template.spec : request.kind.kind == ''CronJob'' && has(object.spec) && has(object.spec.jobTemplate) ? object.spec.jobTemplate.spec.template.spec : null'
+    name: currentSpec
+  - expression: 'oldObject == null ? null : request.kind.kind == ''Pod'' && has(oldObject.spec) ? oldObject.spec : request.kind.kind in [''Deployment'',''ReplicaSet'',''StatefulSet'',''DaemonSet'',''Job''] && has(oldObject.spec) && has(oldObject.spec.template) ? oldObject.spec.template.spec : request.kind.kind == ''CronJob'' && has(oldObject.spec) && has(oldObject.spec.jobTemplate) ? oldObject.spec.jobTemplate.spec.template.spec : null'
+    name: previousSpec
+  - expression: '[variables.currentSpec,variables.previousSpec].filter(s, s != null)'
+    name: specs
+  - expression: 'variables.specs.size() == 0 ? [] : variables.specs[0].containers + (has(variables.specs[0].initContainers) ? variables.specs[0].initContainers : []) + (has(variables.specs[0].ephemeralContainers) ? variables.specs[0].ephemeralContainers : []) + (variables.specs.size() < 2 ? [] : variables.specs[1].containers + (has(variables.specs[1].initContainers) ? variables.specs[1].initContainers : []) + (has(variables.specs[1].ephemeralContainers) ? variables.specs[1].ephemeralContainers : []))'
+    name: containers
