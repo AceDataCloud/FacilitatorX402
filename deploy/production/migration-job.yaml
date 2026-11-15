@@ -26,7 +26,7 @@ spec:
             - --noinput
           envFrom:
             - secretRef:
-                name: pgsql
+                name: pgsql-facilitator
           env:
             - name: APP_ENV
               value: production
