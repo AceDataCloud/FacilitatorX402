@@ -137,9 +137,9 @@ See [configuration migration](plans/application-secrets/README.md) for names and
 ## Payment configuration
 
 Keep RPC URLs, approved assets, receiving addresses and the settlement caller
-token in `x402`. Keep only signer private keys in `x402-private`: each enabled
-network reads its own `<NETWORK>_SIGNER_PRIVATE_KEY` field. The Facilitator never
-mounts sweep or buyback configuration. Database and application credentials
+token in `x402`. Keep private signing material in `x402-private`; the Facilitator
+reads only the `<NETWORK>_SIGNER_PRIVATE_KEY` fields for its enabled networks.
+It never mounts sweep or buyback configuration from that Secret. Database and application credentials
 remain in `pgsql-facilitator` and `facilitator-application`.
 
 The Hong Kong deployment uses its repository-scoped `KUBE_CONFIG_HK`. Ordinary
