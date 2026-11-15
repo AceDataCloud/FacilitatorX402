@@ -60,8 +60,8 @@ jobs:
 
       - name: Test Kubectl
         run: |
-          kubectl get nodes
-          kubectl get svc -n acedatacloud
+          kubectl get deployment/facilitator-backend -n acedatacloud
+          kubectl get service/facilitator-backend -n acedatacloud
 
       - name: Release with payment safety gates
         run: bash ./deploy/release.sh

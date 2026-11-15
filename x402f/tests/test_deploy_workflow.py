@@ -119,3 +119,11 @@ else:
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert all(call[0] in ["get", "delete"] for call in calls)
     assert not any(call[0] in ["apply", "scale", "patch", "create"] for call in calls)
+
+
+def test_hong_kong_publisher_checks_only_existing_named_resources():
+    text = workflow_text()
+    assert "kubectl get deployment/facilitator-backend -n acedatacloud" in text
+    assert "kubectl get service/facilitator-backend -n acedatacloud" in text
+    assert "kubectl get nodes" not in text
+    assert "kubectl get svc -n acedatacloud" not in text
