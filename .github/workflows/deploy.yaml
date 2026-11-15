@@ -63,5 +63,7 @@ jobs:
           kubectl get nodes
           kubectl get svc -n acedatacloud
 
-      - name: Release with payment safety gates
+      - name: Stage release with payments paused
+        env:
+          FACILITATOR_RELEASE_MODE: paused
         run: bash ./deploy/release.sh

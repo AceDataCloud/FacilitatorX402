@@ -112,13 +112,21 @@ on port 8000.
 - `.github/workflows/deploy.yaml`: manual production build and deployment from
   `main` through `deploy/run.sh`.
 
-Production deployment uses a Recreate strategy to prevent old and official
-settlement semantics from overlapping. The runbook quiesces traffic, checks
-legacy records, applies migrations, deploys two replicas, starts reconciliation,
-and rolls back the Deployment and CronJob if validation fails.
+Production templates default to **paused**: zero web replicas, suspended
+reconciliation, all payment rails disabled and no signer private-key references.
+Pushes and manual runs of the deployment workflow stage the new image in those
+paused templates. They do not connect to the database or run preflight,
+migration, reconciliation or live payment checks. Existing reconciliation Pods
+must be stopped before staging; suspending a CronJob does not stop an existing Job.
 
-See [docs/migration.md](docs/migration.md) for the completed official-v2
-migration record and rollback constraints.
+Payment restoration is a separate, explicitly authorized operator action. See
+[paused releases and restoration](docs/paused-releases.md) for required checks,
+rail selection and failure behavior. Ordinary application deployment does not
+restore payments. A failed release rolls back the image while preserving zero
+replicas, disabled rails, absent signer key references and suspended reconciliation.
+
+See [docs/migration.md](docs/migration.md) for the historical official-v2
+migration record and schema rollback constraints.
 
 ## Application secret configuration
 

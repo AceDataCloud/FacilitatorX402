@@ -3,6 +3,8 @@
 set -euo pipefail
 
 TAG="${BUILD_NUMBER:-latest}"
+export TAG
+RELEASE_MODE="$(python3 deploy/render.py --check-config)"
 PREFLIGHT_JOB="facilitator-preflight-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 MIGRATION_JOB="facilitator-migrate-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 RECONCILE_SMOKE_JOB="facilitator-reconcile-smoke-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
@@ -61,21 +63,50 @@ trap on_exit EXIT
 
 kubectl get deployment/facilitator-backend -n acedatacloud -o json >"$ORIGINAL_DEPLOYMENT_FILE"
 ORIGINAL_REPLICAS="$(jq -er '.spec.replicas' "$ORIGINAL_DEPLOYMENT_FILE")"
-jq -e '{spec: .spec}' "$ORIGINAL_DEPLOYMENT_FILE" >"$ORIGINAL_SPEC_FILE"
+# Rollback preserves the previous image/configuration while keeping funds stopped.
+jq -e '{spec: (.spec | .replicas = 0 |
+  .template.spec.containers[].env |= map(select(.name | endswith("_SIGNER_PRIVATE_KEY") | not) |
+    if (.name | endswith("_ENABLED")) then del(.valueFrom) | .value = "false" else . end))}' \
+	"$ORIGINAL_DEPLOYMENT_FILE" >"$ORIGINAL_SPEC_FILE"
+ORIGINAL_REPLICAS=0
 if snapshot_cronjob facilitator-reconcile "$ORIGINAL_CRONJOB_FILE"; then
 	ORIGINAL_CRONJOB_EXISTS=1
 elif [ "$?" -ne 2 ]; then
 	exit 1
 fi
-# A paused payment deployment is an explicit operator stop. Ordinary pushes must
-# not restart signers, run migrations or create reconciliation smoke jobs.
-if [ "$ORIGINAL_REPLICAS" -eq 0 ]; then
-	echo "Facilitator remains paused; an operator must explicitly restore payment readiness before release."
+if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
+	jq '.spec.suspend = true |
+	  .spec.jobTemplate.spec.template.spec.containers[].env |=
+	    map(select(.name | endswith("_SIGNER_PRIVATE_KEY") | not) |
+	      if (.name | endswith("_ENABLED")) then del(.valueFrom) | .value = "false" else . end)' \
+		"$ORIGINAL_CRONJOB_FILE" >"$ORIGINAL_CRONJOB_FILE.paused"
+	mv "$ORIGINAL_CRONJOB_FILE.paused" "$ORIGINAL_CRONJOB_FILE"
+fi
+if [ "$RELEASE_MODE" = paused ]; then
+	QUIESCE_STARTED=1
+	if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
+		kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":true}}'
+	fi
+	kubectl scale deployment/facilitator-backend -n acedatacloud --replicas=0
+	PODS="$(kubectl get pod -l app=facilitator-backend -n acedatacloud -o name)"
+	if [ -n "$PODS" ]; then
+		kubectl wait --for=delete pod -l app=facilitator-backend -n acedatacloud --timeout=300s
+	fi
+	if [ -n "$(kubectl get pod -l app=facilitator-reconcile -n acedatacloud -o name)" ]; then
+		echo "Stop existing reconciliation Jobs before staging a paused release" >&2
+		exit 1
+	fi
+	TAG="$TAG" sh deploy/run.sh
+	# No database access, preflight, migration, reconciler or health request in staging.
+	CUTOVER_COMPLETE=1
 	exit 0
 fi
 # Freeze legacy verify traffic before checking for unsettled authorizations.
 # The Gateway x402 feature flag must already be disabled per the cutover runbook.
 QUIESCE_STARTED=1
+if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
+	kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":true}}'
+fi
 kubectl scale deployment/facilitator-backend -n acedatacloud --replicas=0
 PODS="$(kubectl get pod -l app=facilitator-backend -n acedatacloud -o name)"
 if [ -n "$PODS" ]; then
@@ -112,4 +143,5 @@ kubectl delete job "$RECONCILE_SMOKE_JOB" -n acedatacloud --ignore-not-found >/d
 
 curl --fail --retry 5 --retry-delay 2 --connect-timeout 5 --max-time 15 https://facilitator.acedata.cloud/.well-known/x402 \
 	| jq -e '.facilitator.endpoints.verify | endswith("/verify")' >/dev/null
+kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":false}}'
 CUTOVER_COMPLETE=1
