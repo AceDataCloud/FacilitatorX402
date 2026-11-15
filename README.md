@@ -109,8 +109,11 @@ on port 8000.
 ## Delivery
 
 - `.github/workflows/ci.yaml`: PR test, lint, and Docker build.
-- `.github/workflows/deploy.yaml`: manual production build and deployment from
-  `main` through `deploy/run.sh`.
+- `.github/workflows/deploy.yaml`: production build and deployment from `main`
+  through the Hong Kong cluster's dedicated financial publishing credential
+  (`KUBE_CONFIG_HK`). The Facilitator and its PostgreSQL database use the same
+  private network; the stopped Silicon Valley workload is retained for rollback
+  until the cutover is verified.
 
 Production deployment uses a Recreate strategy to prevent old and official
 settlement semantics from overlapping. The runbook quiesces traffic, checks
@@ -134,3 +137,18 @@ worker CI cannot read or mount the signing Secret or mutate financial workloads.
 The Facilitator release credential is a dedicated trusted financial identity.
 A release exits before migrations or reconciliation jobs when the deployment is
 at zero replicas, preserving an operator's payment pause.
+
+
+## Hong Kong migration
+
+Provision `KUBE_CONFIG_HK` with the dedicated financial publishing identity, not
+a shared namespace administrator. Prepare `facilitator-application` and
+`pgsql-facilitator` in Hong Kong, with the approved private database endpoint.
+Signing material belongs only in `x402-signer-private` and is not required for
+passive HTTP migration checks. The existing Service and shared `nginx-router`
+Ingress use `facilitator.acedata.cloud` and its current wildcard TLS Secret.
+
+Keep all payment rails disabled, the Gateway payment flag off and reconciliation
+suspended during the cutover. Prove the database path and authenticated read-only
+access, HTTP routing and outbound chain RPCs before changing public DNS. A DNS
+cutover does not authorize restoring signing or processing historical payments.

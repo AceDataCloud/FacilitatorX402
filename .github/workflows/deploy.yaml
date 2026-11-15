@@ -53,10 +53,10 @@ jobs:
           COMPOSE_HTTP_TIMEOUT: "600"
         run: docker compose push
 
-      - name: Set Kubectl (US SV cluster)
+      - name: Set Kubectl (Hong Kong financial publisher)
         uses: Azure/k8s-set-context@v5
         with:
-          kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}
+          kubeconfig: ${{ secrets.KUBE_CONFIG_HK }}
 
       - name: Test Kubectl
         run: |
