@@ -33,7 +33,7 @@ spec:
             - --fail-expired
           envFrom:
             - secretRef:
-                name: pgsql
+                name: pgsql-facilitator
           env:
             - name: APP_ENV
               value: production

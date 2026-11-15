@@ -35,7 +35,7 @@ spec:
               command: ["python", "manage.py", "reconcile_x402", "--limit", "100", "--max-runtime-seconds", "240"]
               envFrom:
                 - secretRef:
-                    name: pgsql
+                    name: pgsql-facilitator
               env:
                 - name: APP_ENV
                   value: production
