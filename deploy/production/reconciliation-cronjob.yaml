@@ -97,7 +97,7 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       key: BASE_SIGNER_PRIVATE_KEY
-                      name: x402
+                      name: x402-signer-private
                       optional: false
                 - name: X402_BASE_SIGNER_ADDRESS
                   valueFrom:
@@ -141,7 +141,7 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       key: SOLANA_SIGNER_PRIVATE_KEY
-                      name: x402
+                      name: x402-signer-private
                       optional: false
                 - name: X402_SOLANA_SIGNER_ADDRESS
                   valueFrom:
@@ -181,7 +181,7 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       key: SKALE_SIGNER_PRIVATE_KEY
-                      name: x402
+                      name: x402-signer-private
                       optional: false
                 - name: X402_SKALE_SIGNER_ADDRESS
                   valueFrom:
