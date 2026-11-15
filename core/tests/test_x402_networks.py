@@ -34,8 +34,9 @@ def test_deployed_rail_receives_optional_secret_configuration(alias, chain_id, a
         source = (root / relative).read_text()
         for field in ["EXACT_ENABLED", "PAY_TO", "RPC_URL", "SIGNER_PRIVATE_KEY", "SIGNER_ADDRESS", "GAS_LIMIT"]:
             key = f"{alias.upper()}_{field}"
+            secret_name = "x402-signer-private" if field == "SIGNER_PRIVATE_KEY" else "x402"
             pattern = (
                 rf"(?m)^ +?- name: X402_{key}\n +valueFrom:\n +secretKeyRef:"
-                rf"\n +name: x402\n +key: {key}\n +optional: true"
+                rf"\n +name: {secret_name}\n +key: {key}\n +optional: true"
             )
             assert re.search(pattern, source), f"{relative} does not wire {key}"

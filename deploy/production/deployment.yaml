@@ -82,7 +82,7 @@ spec:
             - name: X402_ARBITRUM_SIGNER_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: x402
+                  name: x402-signer-private
                   key: ARBITRUM_SIGNER_PRIVATE_KEY
                   optional: true
             - name: X402_ARBITRUM_SIGNER_ADDRESS
@@ -111,7 +111,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: BASE_SIGNER_PRIVATE_KEY
-                  name: x402
+                  name: x402-signer-private
                   optional: false
             - name: X402_BASE_SIGNER_ADDRESS
               valueFrom:
@@ -155,7 +155,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: SOLANA_SIGNER_PRIVATE_KEY
-                  name: x402
+                  name: x402-signer-private
                   optional: false
             - name: X402_SOLANA_SIGNER_ADDRESS
               valueFrom:
@@ -195,7 +195,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   key: SKALE_SIGNER_PRIVATE_KEY
-                  name: x402
+                  name: x402-signer-private
                   optional: false
             - name: X402_SKALE_SIGNER_ADDRESS
               valueFrom:
