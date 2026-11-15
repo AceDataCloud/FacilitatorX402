@@ -27,6 +27,10 @@ LEGACY_NETWORKS = {
 
 
 def reconcile_record(record: X402Authorization) -> str:
+    if not settings.X402_RECONCILIATION_ENABLED:
+        return "paused"
+    if not str(record.verification_id or "").startswith("gateway-v2:"):
+        return "manual_review"
     stored_network = str(record.payment_requirements.get("network") or "")
     if not stored_network:
         return "invalid"
@@ -110,6 +114,9 @@ class Command(BaseCommand):
         parser.add_argument("--max-runtime-seconds", type=int, default=240)
 
     def handle(self, *args, **options):  # noqa: ANN002, ANN003, ANN201
+        if not settings.X402_RECONCILIATION_ENABLED:
+            self.stdout.write(str({"processed": 0, "outcomes": {"paused": 1}}))
+            return
         limit = options["limit"]
         if limit <= 0 or limit > 1000:
             raise CommandError("limit must be between 1 and 1000")
@@ -122,6 +129,7 @@ class Command(BaseCommand):
             X402Authorization.objects.filter(
                 Q(status=X402Authorization.Status.SETTLING),
                 Q(settling_started_at__lt=cutoff),
+                verification_id__startswith="gateway-v2:",
             ).order_by("settling_started_at")[:limit]
         )
         outcomes: dict[str, int] = {}

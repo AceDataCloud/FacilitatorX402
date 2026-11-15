@@ -395,9 +395,53 @@ def _settlement_requirements_match(record: X402Authorization, incoming: dict) ->
         or not amount.isdigit()
         or not str(record.value).isdigit()
         or int(amount) > int(record.value)
+        or (record.settled_amount is not None and amount != record.settled_amount)
     ):
         return False, amount
     return True, amount
+
+
+class X402SettlementStatusView(APIView):
+    """Authenticated, read-only recovery of a lost settlement receipt."""
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request, *args, **kwargs):  # noqa: ANN001
+        expected_token = settings.X402_SETTLE_TOKEN
+        supplied_token = request.headers.get("X-Settlement-Token", "")
+        if not expected_token or not supplied_token or not secrets.compare_digest(supplied_token, expected_token):
+            return _failed_settle("invalid_payment_request", status_code=status.HTTP_403_FORBIDDEN)
+        try:
+            parsed = _parse_request(request.data, SettleRequest)
+            identity = _payment_identity(parsed)
+            record = X402Authorization.objects.get(nonce=identity.nonce)
+        except X402Authorization.DoesNotExist:
+            return _failed_settle("authorization_not_verified", status_code=status.HTTP_404_NOT_FOUND)
+        except (ValidationError, ValueError):
+            return _failed_settle("invalid_payment_request", status_code=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error("x402 receipt lookup failed error_type={}", type(exc).__name__)
+            return _failed_settle("authorization_load_failed", status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        requirements = parsed.payment_requirements.model_dump(mode="json", by_alias=True)
+        payload = parsed.payment_payload.model_dump(mode="json", by_alias=True)
+        matches, _ = _settlement_requirements_match(record, requirements)
+        if not matches or payload != record.payment_payload:
+            return _failed_settle("payment_mismatch", status_code=status.HTTP_409_CONFLICT)
+        # Disabled rails remain readable. This endpoint never configures a signer,
+        # queries an RPC, changes state, or prepares/rebroadcasts a transaction.
+        settled = record.status == X402Authorization.Status.SETTLED
+        return Response(
+            {
+                "authorizationStatus": record.status,
+                "success": settled,
+                "transaction": record.transaction_hash or "",
+                "payer": record.payer,
+                "amount": record.settled_amount or record.value if settled else record.settled_amount,
+                "network": str(requirements.get("network") or ""),
+            }
+        )
 
 
 class X402SupportedView(APIView):

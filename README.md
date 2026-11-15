@@ -134,3 +134,24 @@ worker CI cannot read or mount the signing Secret or mutate financial workloads.
 The Facilitator release credential is a dedicated trusted financial identity.
 A release exits before migrations or reconciliation jobs when the deployment is
 at zero replicas, preserving an operator's payment pause.
+## Settlement receipt recovery
+
+`POST /settlement-status` requires `X-Settlement-Token` and the same v2
+`paymentPayload` and `paymentRequirements` as settlement. It returns
+`authorizationStatus`, `success`, `transaction`, `payer`, `amount`, and `network`
+from PostgreSQL. `success` is true only for a persisted `settled` authorization.
+The endpoint remains readable when a rail is paused and performs no signing,
+RPC calls, state changes, or transaction broadcast. Unknown/mismatched records
+return 404/409; no payment is inferred from verification alone.
+
+For `upto`, the first claimed amount is immutable. Subsequent settlement and
+receipt lookups must use that amount. The existing Solana `/settle` duplicate
+rejection stays in place; lost receipts are recovered through this read-only
+endpoint rather than treating another resource fulfillment as paid.
+
+Deploy this endpoint before the companion Gateway recovery change. Payment
+rails and recovery remain paused during review. `X402_RECONCILIATION_ENABLED`
+defaults to false and is false in the CronJob manifest. After a separately approved
+resume, reconciliation processes only records verified with the new
+`gateway-v2:` idempotency-key prefix; older authorizations require manual review. No historical authorization is
+replayed by this change.

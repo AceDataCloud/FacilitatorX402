@@ -15,6 +15,7 @@ from x402f.svm_recurring import PROFILE
 def record(*, transaction_hash=None, prepared_transaction=None):  # noqa: ANN001
     return X402Authorization.objects.create(
         nonce=f"nonce-{X402Authorization.objects.count()}",
+        verification_id="gateway-v2:synthetic-request",
         payer="payer",
         pay_to="payee",
         value="100",
@@ -30,6 +31,7 @@ def record(*, transaction_hash=None, prepared_transaction=None):  # noqa: ANN001
     )
 
 
+@override_settings(X402_RECONCILIATION_ENABLED=True)
 class ReconciliationCommandTests(TestCase):
     @patch("x402f.management.commands.reconcile_x402._configured")
     @patch("x402f.management.commands.reconcile_x402._transaction_status")
@@ -198,3 +200,29 @@ class ReconciliationCommandTests(TestCase):
         self.assertEqual(stale.status, X402Authorization.Status.VERIFIED)
         self.assertEqual(fresh.status, X402Authorization.Status.SETTLING)
         self.assertIn("processed", output.getvalue())
+
+
+class ReconciliationPauseTests(TestCase):
+    @override_settings(X402_RECONCILIATION_ENABLED=False)
+    @patch("x402f.management.commands.reconcile_x402._configured")
+    def test_paused_command_does_not_query_or_broadcast(self, configured):
+        original = record(transaction_hash="synthetic-tx", prepared_transaction="synthetic-raw")
+        before = X402Authorization.objects.values().get(pk=original.pk)
+        output = StringIO()
+        call_command("reconcile_x402", stdout=output)
+        self.assertEqual(reconcile_record(original), "paused")
+        self.assertEqual(X402Authorization.objects.values().get(pk=original.pk), before)
+        configured.assert_not_called()
+        self.assertIn("paused", output.getvalue())
+
+    @override_settings(X402_RECONCILIATION_ENABLED=True)
+    @patch("x402f.management.commands.reconcile_x402._configured")
+    def test_legacy_authorization_is_never_replayed(self, configured):
+        original = record(transaction_hash="synthetic-tx", prepared_transaction="synthetic-raw")
+        original.verification_id = None
+        original.save(update_fields=["verification_id"])
+        self.assertEqual(reconcile_record(original), "manual_review")
+        call_command("reconcile_x402", stdout=StringIO())
+        configured.assert_not_called()
+        original.refresh_from_db()
+        self.assertEqual(original.status, X402Authorization.Status.SETTLING)

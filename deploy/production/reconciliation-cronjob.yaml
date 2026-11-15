@@ -37,6 +37,8 @@ spec:
                 - secretRef:
                     name: pgsql-facilitator
               env:
+                - name: X402_RECONCILIATION_ENABLED
+                  value: "false"
                 - name: APP_ENV
                   value: production
                 - name: APPLICATION_SECRET_KEY
