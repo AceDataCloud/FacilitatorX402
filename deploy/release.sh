@@ -67,6 +67,12 @@ if snapshot_cronjob facilitator-reconcile "$ORIGINAL_CRONJOB_FILE"; then
 elif [ "$?" -ne 2 ]; then
 	exit 1
 fi
+# A paused payment deployment is an explicit operator stop. Ordinary pushes must
+# not restart signers, run migrations or create reconciliation smoke jobs.
+if [ "$ORIGINAL_REPLICAS" -eq 0 ]; then
+	echo "Facilitator remains paused; an operator must explicitly restore payment readiness before release."
+	exit 0
+fi
 # Freeze legacy verify traffic before checking for unsettled authorizations.
 # The Gateway x402 feature flag must already be disabled per the cutover runbook.
 QUIESCE_STARTED=1

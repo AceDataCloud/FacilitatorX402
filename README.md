@@ -124,3 +124,13 @@ migration record and rollback constraints.
 
 Use `APPLICATION_SECRET_KEY` from this service's independent application Secret.
 See [configuration migration](plans/application-secrets/README.md) for names and deployment prerequisites.
+
+
+## Signing credential isolation
+
+Base, Solana, SKALE and optional Arbitrum signing keys are injected only from
+`x402-signer-private`; public RPC/pay-to metadata stays in `x402`. Ordinary
+worker CI cannot read or mount the signing Secret or mutate financial workloads.
+The Facilitator release credential is a dedicated trusted financial identity.
+A release exits before migrations or reconciliation jobs when the deployment is
+at zero replicas, preserving an operator's payment pause.
