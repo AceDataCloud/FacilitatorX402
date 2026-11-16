@@ -12,7 +12,6 @@ RAIL_FLAGS = {
     "base-upto": "X402_BASE_UPTO_ENABLED",
     "solana-exact": "X402_SOLANA_MAINNET_ENABLED",
     "solana-recurring": "X402_SOLANA_RECURRING_ENABLED",
-    "skale-exact": "X402_SKALE_EXACT_ENABLED",
     "arbitrum-exact": "X402_ARBITRUM_EXACT_ENABLED",
 }
 RAIL_SIGNERS = {
@@ -20,7 +19,6 @@ RAIL_SIGNERS = {
     "base-upto": "BASE",
     "solana-exact": "SOLANA",
     "solana-recurring": "SOLANA",
-    "skale-exact": "SKALE",
     "arbitrum-exact": "ARBITRUM",
 }
 

@@ -13,7 +13,6 @@ from x402.schemas import PaymentPayload, PaymentRequirements
 from x402f.official import (
     BASE_MAINNET,
     ROBINHOOD_MAINNET,
-    SKALE_MAINNET,
     build_configured_facilitator,
     build_configured_registry,
     build_facilitator,
@@ -192,7 +191,6 @@ def test_official_registry_supports_evm_exact_upto_and_svm_exact() -> None:
 @override_settings(
     X402_BASE_EXACT_ENABLED=True,
     X402_BASE_UPTO_ENABLED=True,
-    X402_SKALE_EXACT_ENABLED=True,
     X402_ROBINHOOD_EXACT_ENABLED=True,
     X402_SOLANA_MAINNET_ENABLED=True,
     X402_SOLANA_DEVNET_ENABLED=True,
@@ -212,7 +210,6 @@ def test_configured_registry_registers_every_enabled_official_kind(evm_builder, 
     assert kinds == {
         ("exact", BASE_MAINNET),
         ("upto", BASE_MAINNET),
-        ("exact", SKALE_MAINNET),
         ("exact", ROBINHOOD_MAINNET),
         ("exact", SOLANA_MAINNET_CAIP2),
         ("exact", SOLANA_DEVNET_CAIP2),
@@ -222,7 +219,6 @@ def test_configured_registry_registers_every_enabled_official_kind(evm_builder, 
 @override_settings(
     X402_BASE_EXACT_ENABLED=True,
     X402_BASE_UPTO_ENABLED=False,
-    X402_SKALE_EXACT_ENABLED=True,
     X402_SOLANA_MAINNET_ENABLED=False,
     X402_SOLANA_DEVNET_ENABLED=False,
 )
@@ -239,7 +235,6 @@ def test_configured_registry_builds_only_requested_network(evm_builder) -> None:
 @override_settings(
     X402_BASE_EXACT_ENABLED=False,
     X402_BASE_UPTO_ENABLED=False,
-    X402_SKALE_EXACT_ENABLED=False,
     X402_SOLANA_MAINNET_ENABLED=False,
     X402_SOLANA_DEVNET_ENABLED=False,
 )
@@ -265,6 +260,15 @@ def test_configured_canary_signer_uses_sepolia_chain_id(signer_class) -> None:
     assert configured_signer is signer
     assert signer_class.call_args.kwargs["chain_id"] == 84532
     assert [kind.network for kind in facilitator.get_supported().kinds] == ["eip155:84532"]
+
+
+@override_settings(X402_SKALE_EXACT_ENABLED=True)
+@patch("x402f.official._evm_signer")
+def test_retired_network_does_not_build_a_signer_with_stale_flag(evm_builder) -> None:
+    with __import__("pytest").raises(RuntimeError, match="No x402 facilitator payment kinds"):
+        build_configured_registry(networks={"eip155:1187947933"})
+
+    evm_builder.assert_not_called()
 
 
 def test_official_base_exact_rejects_tampered_signature() -> None:

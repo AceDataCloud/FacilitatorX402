@@ -8,11 +8,11 @@ from django.utils import timezone
 from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
 
 from x402f.models import X402Authorization
-from x402f.official import SKALE_MAINNET
 from x402f.svm_recurring import is_recurring_payload
 from x402f.views_official import (
     _broadcast_prepared,
     _configured,
+    _rail_policy,
     _signer_lock,
     _transaction_status,
     advance_recurring_settlement,
@@ -20,7 +20,6 @@ from x402f.views_official import (
 
 LEGACY_NETWORKS = {
     "base": "eip155:8453",
-    "skale": SKALE_MAINNET,
     "solana": SOLANA_MAINNET_CAIP2,
     "solana-devnet": SOLANA_DEVNET_CAIP2,
 }
@@ -31,6 +30,10 @@ def reconcile_record(record: X402Authorization) -> str:
     if not stored_network:
         return "invalid"
     network = LEGACY_NETWORKS.get(stored_network, stored_network)
+    try:
+        _rail_policy(network)
+    except ValueError:
+        return "unsupported"
     if is_recurring_payload(record.payment_payload):
         renewed_at = timezone.now()
         renewed = X402Authorization.objects.filter(

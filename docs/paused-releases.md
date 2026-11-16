@@ -42,7 +42,7 @@ BUILD_NUMBER=<built-image-tag> bash deploy/release.sh
 ```
 
 `FACILITATOR_RESTORE_RAILS` is a comma-separated exact allowlist: `base-exact`,
-`base-upto`, `solana-exact`, `solana-recurring`, `skale-exact`, `arbitrum-exact`.
+`base-upto`, `solana-exact`, `solana-recurring`, `arbitrum-exact`.
 There is no `all` alias or implicit default. `solana-recurring` also requires
 `solana-exact`. Unknown modes, missing confirmation, unsupported rails and a rail
 list on a paused release fail before Kubernetes changes.

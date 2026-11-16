@@ -162,17 +162,6 @@ X402_SOLANA_DEVNET_SIGNER_ADDRESS = env.str("X402_SOLANA_DEVNET_SIGNER_ADDRESS",
 X402_SOLANA_DEVNET_ASSET = env.str("X402_SOLANA_DEVNET_ASSET", "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")
 X402_SOLANA_DEVNET_PAY_TO = env.str("X402_SOLANA_DEVNET_PAY_TO", X402_SOLANA_PAY_TO)
 
-# SKALE Base chain (zero gas fees, EVM-compatible)
-X402_SKALE_RPC_URL = env.str("X402_SKALE_RPC_URL", "https://skale-base.skalenodes.com/v1/base")
-X402_SKALE_SIGNER_PRIVATE_KEY = env.str("X402_SKALE_SIGNER_PRIVATE_KEY", "")
-X402_SKALE_SIGNER_ADDRESS = env.str("X402_SKALE_SIGNER_ADDRESS", "")
-X402_SKALE_CHAIN_ID = env.int("X402_SKALE_CHAIN_ID", 1187947933)
-X402_SKALE_GAS_LIMIT = env.int("X402_SKALE_GAS_LIMIT", 50000000)
-# Bridged USDC (SKALE Bridge) - adheres to Circle's Bridged USDC standard
-X402_SKALE_ASSET = env.str("X402_SKALE_ASSET", "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20")
-X402_SKALE_PAY_TO = env.str("X402_SKALE_PAY_TO", "")
-X402_SKALE_EXACT_ENABLED = env.bool("X402_SKALE_EXACT_ENABLED", False)
-
 # Robinhood Chain (Arbitrum Orbit L2, chainId 4663, ETH gas). Settles in USDG,
 # the chain's native stablecoin — there is no canonical USDC. USDG is an EIP-2535
 # Diamond that supports EIP-3009 transferWithAuthorization but does not expose

@@ -27,6 +27,11 @@ SPEC.loader.exec_module(renderer)
         {
             "FACILITATOR_RELEASE_MODE": "restore",
             "CONFIRM_FACILITATOR_PAYMENT_RESTORE": "yes",
+            "FACILITATOR_RESTORE_RAILS": "skale-exact",
+        },
+        {
+            "FACILITATOR_RELEASE_MODE": "restore",
+            "CONFIRM_FACILITATOR_PAYMENT_RESTORE": "yes",
             "FACILITATOR_RESTORE_RAILS": "solana-recurring",
         },
     ],
@@ -56,7 +61,7 @@ def test_restore_only_receives_requested_signer():
         assert "key: BASE_SIGNER_PRIVATE_KEY" in rendered
         assert "name: x402-private" in rendered
         assert "key: SOLANA_SIGNER_PRIVATE_KEY" not in rendered
-        assert "key: SKALE_SIGNER_PRIVATE_KEY" not in rendered
+        assert "SKALE" not in rendered
         assert "key: ARBITRUM_SIGNER_PRIVATE_KEY" not in rendered
         for flag in ("X402_BASE_UPTO_ENABLED", "X402_SOLANA_MAINNET_ENABLED", "X402_ARBITRUM_EXACT_ENABLED"):
             block = rendered.split(f"- name: {flag}", 1)[1].split("- name:", 1)[0]
@@ -167,7 +172,7 @@ def test_successful_restore_keeps_reconciliation_suspended(tmp_path):
     assert "replicas: 2" in applied
     assert "key: BASE_SIGNER_PRIVATE_KEY" in applied
     assert "key: SOLANA_SIGNER_PRIVATE_KEY" in applied
-    assert "key: SKALE_SIGNER_PRIVATE_KEY" not in applied
+    assert "SKALE" not in applied
     assert "key: ARBITRUM_SIGNER_PRIVATE_KEY" not in applied
     assert "suspend: true" in applied
     assert "facilitator-preflight-test-1" in applied

@@ -11,7 +11,6 @@ retired after the official-v2 production cutover completed in July 2026.
 | --- | --- | --- | --- |
 | exact | Base mainnet | `eip155:8453` | Circle USDC |
 | upto | Base mainnet | `eip155:8453` | Circle USDC through Permit2 |
-| exact | SKALE Base | `eip155:1187947933` | Bridged USDC |
 | exact | Solana mainnet | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | SPL USDC |
 
 Solana devnet support exists behind configuration and is disabled by default.
@@ -74,7 +73,7 @@ Core settings:
 
 Each enabled rail requires its RPC URL, signer key/address, approved asset, and
 approved recipient. See [docs/migration.md](docs/migration.md) for the complete
-Base, SKALE, Solana, migration, cutover, and rollback configuration.
+Base, Solana, migration, cutover, and rollback configuration.
 
 ## Development
 
