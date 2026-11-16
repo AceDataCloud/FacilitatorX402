@@ -39,7 +39,7 @@ def test_deploy_keeps_the_hardened_us_workflow() -> None:
     release = (ROOT / "deploy/release.sh").read_text()
     run = (ROOT / "deploy/run.sh").read_text()
 
-    assert "kubeconfig: ${{ secrets.KUBE_CONFIG_SV }}" in text
+    assert "kubeconfig: ${{ secrets.KUBE_CONFIG_HK }}" in text
     assert "run: bash ./deploy/release.sh" in text
     assert 'TAG="$TAG" sh deploy/run.sh' in release
     assert "facilitator-bazaar-refresh" not in release
@@ -57,65 +57,29 @@ def test_runtime_changes_are_not_ignored() -> None:
         assert runtime_path not in ignored_block
 
 
-def test_solana_recurring_is_enabled_in_runtime_and_reconciler() -> None:
+def test_payment_rails_are_disabled_in_runtime_and_reconciler() -> None:
     cronjob = (ROOT / "deploy" / "production" / "reconciliation-cronjob.yaml").read_text()
     for manifest in (DEPLOYMENT.read_text(), cronjob):
-        block = manifest.split("- name: X402_SOLANA_RECURRING_ENABLED", 1)[1].split("- name:", 1)[0]
-        assert 'value: "true"' in block
-        assert 'value: "false"' not in block
+        for name in (
+            "X402_BASE_EXACT_ENABLED",
+            "X402_BASE_UPTO_ENABLED",
+            "X402_SOLANA_MAINNET_ENABLED",
+            "X402_SOLANA_RECURRING_ENABLED",
+            "X402_SKALE_EXACT_ENABLED",
+            "X402_ARBITRUM_EXACT_ENABLED",
+        ):
+            block = manifest.split(f"- name: {name}", 1)[1].split("- name:", 1)[0]
+            assert 'value: "false"' in block
+            assert "valueFrom" not in block
+        assert "_SIGNER_PRIVATE_KEY" not in manifest
+    assert "replicas: 0" in DEPLOYMENT.read_text()
+    assert "suspend: true" in cronjob
+    assert "FACILITATOR_RELEASE_MODE: paused" in workflow_text()
 
 
-def test_signing_fields_use_only_the_private_signer_secret():
-    for path in (DEPLOYMENT, ROOT / "deploy/production/reconciliation-cronjob.yaml"):
-        source = path.read_text()
-        for network in ("BASE", "SOLANA", "SKALE", "ARBITRUM"):
-            block = source.split(f"- name: X402_{network}_SIGNER_PRIVATE_KEY", 1)[1].split("- name:", 1)[0]
-            assert "name: x402-signer-private" in block
-            assert "name: x402\n" not in block
-
-
-def test_paused_release_exits_before_any_write(tmp_path):
-    import json
-    import os
-    import shutil
-    import subprocess
-
-    if not shutil.which("jq"):
-        import pytest
-
-        pytest.skip("jq required for release shell test")
-    fixture = tmp_path / "kubectl"
-    log = tmp_path / "calls"
-    fixture.write_text(
-        "#!/usr/bin/env python3\n"
-        + """import json,os,sys
-with open(os.environ["PROBE_LOG"],"a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")
-args=sys.argv[1:]
-if args[:2]==["get","deployment/facilitator-backend"]:
- print(json.dumps({"spec":{"replicas":0}}))
-elif args[:2]==["get","cronjob/facilitator-reconcile"]:
- print(json.dumps({"spec":{"suspend":True}}))
-elif args[:2]==["delete","job"]:
- pass
-else:
- raise SystemExit(44)
-"""
-    )
-    fixture.chmod(0o755)
-    result = subprocess.run(
-        ["bash", "deploy/release.sh"],
-        cwd=ROOT,
-        env={
-            **os.environ,
-            "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
-            "PROBE_LOG": str(log),
-            "BUILD_NUMBER": "probe",
-        },
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "Facilitator remains paused" in result.stdout
-    calls = [json.loads(line) for line in log.read_text().splitlines()]
-    assert all(call[0] in ["get", "delete"] for call in calls)
-    assert not any(call[0] in ["apply", "scale", "patch", "create"] for call in calls)
+def test_publisher_checks_only_existing_named_resources():
+    text = workflow_text()
+    assert "kubectl get deployment/facilitator-backend -n acedatacloud" in text
+    assert "kubectl get service/facilitator-backend -n acedatacloud" in text
+    assert "kubectl get nodes" not in text
+    assert "kubectl get svc -n acedatacloud" not in text

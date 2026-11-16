@@ -4,6 +4,7 @@ metadata:
   name: facilitator-reconcile
   namespace: acedatacloud
 spec:
+  suspend: true
   schedule: "* * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
@@ -48,11 +49,7 @@ spec:
                 - name: PGSQL_DATABASE_FACILITATOR
                   value: acedatacloud_facilitator
                 - name: X402_ARBITRUM_EXACT_ENABLED
-                  valueFrom:
-                    secretKeyRef:
-                      name: x402
-                      key: ARBITRUM_EXACT_ENABLED
-                      optional: true
+                  value: "false"
                 - name: X402_ARBITRUM_PAY_TO
                   valueFrom:
                     secretKeyRef:
@@ -64,12 +61,6 @@ spec:
                     secretKeyRef:
                       name: x402
                       key: ARBITRUM_RPC_URL
-                      optional: true
-                - name: X402_ARBITRUM_SIGNER_PRIVATE_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: x402-signer-private
-                      key: ARBITRUM_SIGNER_PRIVATE_KEY
                       optional: true
                 - name: X402_ARBITRUM_SIGNER_ADDRESS
                   valueFrom:
@@ -93,12 +84,6 @@ spec:
                       key: BASE_RPC_URL
                       name: x402
                       optional: false
-                - name: X402_BASE_SIGNER_PRIVATE_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      key: BASE_SIGNER_PRIVATE_KEY
-                      name: x402-signer-private
-                      optional: false
                 - name: X402_BASE_SIGNER_ADDRESS
                   valueFrom:
                     secretKeyRef:
@@ -118,9 +103,9 @@ spec:
                       name: x402
                       optional: false
                 - name: X402_BASE_EXACT_ENABLED
-                  value: "true"
+                  value: "false"
                 - name: X402_BASE_UPTO_ENABLED
-                  value: "true"
+                  value: "false"
                 - name: X402_GAS_LIMIT
                   value: "500000"
                 - name: X402_TX_TIMEOUT_SECONDS
@@ -136,12 +121,6 @@ spec:
                     secretKeyRef:
                       key: SOLANA_RPC_URL
                       name: x402
-                      optional: false
-                - name: X402_SOLANA_SIGNER_PRIVATE_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      key: SOLANA_SIGNER_PRIVATE_KEY
-                      name: x402-signer-private
                       optional: false
                 - name: X402_SOLANA_SIGNER_ADDRESS
                   valueFrom:
@@ -162,9 +141,9 @@ spec:
                       name: x402
                       optional: false
                 - name: X402_SOLANA_MAINNET_ENABLED
-                  value: "true"
+                  value: "false"
                 - name: X402_SOLANA_RECURRING_ENABLED
-                  value: "true"
+                  value: "false"
                 - name: X402_SOLANA_SUBSCRIPTIONS_PROGRAM
                   value: De1egAFMkMWZSN5rYXRj9CAdheBamobVNubTsi9avR44
                 - name: X402_SOLANA_TOKEN_PROGRAM
@@ -176,12 +155,6 @@ spec:
                     secretKeyRef:
                       key: SKALE_RPC_URL
                       name: x402
-                      optional: false
-                - name: X402_SKALE_SIGNER_PRIVATE_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      key: SKALE_SIGNER_PRIVATE_KEY
-                      name: x402-signer-private
                       optional: false
                 - name: X402_SKALE_SIGNER_ADDRESS
                   valueFrom:
@@ -206,7 +179,7 @@ spec:
                 - name: X402_SKALE_GAS_LIMIT
                   value: "50000000"
                 - name: X402_SKALE_EXACT_ENABLED
-                  value: "true"
+                  value: "false"
                 - name: X402_SETTLEMENT_LEASE_SECONDS
                   value: "300"
                 - name: X402_PREPARED_MAX_AGE_SECONDS
