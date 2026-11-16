@@ -14,4 +14,5 @@ def test_reconciliation_budget_and_cleanup():
     assert tx_timeout < runtime < deadline < lease
     assert "ttlSecondsAfterFinished: 600" in manifest
     assert "concurrencyPolicy: Forbid" in manifest
-    assert f"--timeout={deadline + 60}s" in release
+    assert "facilitator-reconcile-smoke" not in release
+    assert '"suspend":false' not in release

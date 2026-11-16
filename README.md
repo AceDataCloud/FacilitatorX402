@@ -114,16 +114,18 @@ on port 8000.
 
 Production templates default to **paused**: zero web replicas, suspended
 reconciliation, all payment rails disabled and no signer private-key references.
-Pushes and manual runs of the deployment workflow stage the new image in those
-paused templates. They do not connect to the database or run preflight,
-migration, reconciliation or live payment checks. Existing reconciliation Pods
-must be stopped before staging; suspending a CronJob does not stop an existing Job.
+The production workflow explicitly restores the authorized `base-exact`,
+`base-upto` and `solana-exact` rails with two web replicas, preserving the current
+payment service across code releases. Other rails remain disabled. Releases run
+database preflight and migrations but never run a reconciliation smoke Job or
+resume its CronJob. Historical settlement recovery requires a separate operator
+action.
 
-Payment restoration is a separate, explicitly authorized operator action. See
-[paused releases and restoration](docs/paused-releases.md) for required checks,
-rail selection and failure behavior. Ordinary application deployment does not
-restore payments. A failed release rolls back the image while preserving zero
-replicas, disabled rails, absent signer key references and suspended reconciliation.
+See [paused releases and restoration](docs/paused-releases.md) for the explicit
+pause command, rail selection and failure behavior. A standalone release without
+restore parameters remains paused. A failed release rolls back the image while
+preserving zero replicas, disabled rails, absent signer key references and
+suspended reconciliation.
 
 See [docs/migration.md](docs/migration.md) for the historical official-v2
 migration record and schema rollback constraints.

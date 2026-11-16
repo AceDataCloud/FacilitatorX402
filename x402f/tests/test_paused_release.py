@@ -124,6 +124,11 @@ def run_release(tmp_path, *, fail_apply=False, reconcile_pod=False, restore=Fals
         " (p/'rollback.json').write_text(Path(source).read_text())\n"
     )
     fake.chmod(0o755)
+    curl = tmp_path / "curl"
+    curl.write_text(
+        '#!/bin/sh\nprintf \'%s\\n\' \'{"facilitator":{"endpoints":{"verify":"https://facilitator.acedata.cloud/verify"}}}\'\n'
+    )
+    curl.chmod(0o755)
     environ = {key: value for key, value in os.environ.items() if not key.startswith(("FACILITATOR_", "CONFIRM_"))}
     environ.update(
         PATH=f"{tmp_path}:{os.environ['PATH']}",
@@ -136,7 +141,7 @@ def run_release(tmp_path, *, fail_apply=False, reconcile_pod=False, restore=Fals
         environ.update(
             FACILITATOR_RELEASE_MODE="restore",
             CONFIRM_FACILITATOR_PAYMENT_RESTORE="yes",
-            FACILITATOR_RESTORE_RAILS="base-exact",
+            FACILITATOR_RESTORE_RAILS="base-exact,base-upto,solana-exact",
         )
     result = subprocess.run(["bash", "deploy/release.sh"], cwd=ROOT, env=environ, capture_output=True, text=True)
     calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
@@ -153,6 +158,23 @@ def test_default_release_stages_without_starting_jobs(tmp_path):
     assert not any(call[0] in {"create", "logs", "rollout"} for call in calls)
     assert "kind: Job\n" not in applied
     assert not any(call[:2] == ["delete", "job"] for call in calls)
+
+
+def test_successful_restore_keeps_reconciliation_suspended(tmp_path):
+    result, calls = run_release(tmp_path, restore=True)
+    assert result.returncode == 0, result.stderr
+    applied = (tmp_path / "applied.txt").read_text()
+    assert "replicas: 2" in applied
+    assert "key: BASE_SIGNER_PRIVATE_KEY" in applied
+    assert "key: SOLANA_SIGNER_PRIVATE_KEY" in applied
+    assert "key: SKALE_SIGNER_PRIVATE_KEY" not in applied
+    assert "key: ARBITRUM_SIGNER_PRIVATE_KEY" not in applied
+    assert "suspend: true" in applied
+    assert "facilitator-preflight-test-1" in applied
+    assert "facilitator-migrate-test-1" in applied
+    assert "facilitator-reconcile-smoke" not in applied
+    assert not any(call[:2] == ["create", "job"] for call in calls)
+    assert not any('"suspend":false' in argument for call in calls for argument in call)
 
 
 @pytest.mark.parametrize("restore", [False, True])
