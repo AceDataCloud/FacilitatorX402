@@ -74,7 +74,13 @@ def test_payment_rails_are_disabled_in_runtime_and_reconciler() -> None:
         assert "_SIGNER_PRIVATE_KEY" not in manifest
     assert "replicas: 0" in DEPLOYMENT.read_text()
     assert "suspend: true" in cronjob
-    assert "FACILITATOR_RELEASE_MODE: paused" in workflow_text()
+
+
+def test_workflow_preserves_only_the_authorized_restored_rails() -> None:
+    text = workflow_text()
+    assert "FACILITATOR_RELEASE_MODE: restore" in text
+    assert 'CONFIRM_FACILITATOR_PAYMENT_RESTORE: "yes"' in text
+    assert "FACILITATOR_RESTORE_RAILS: base-exact,base-upto,solana-exact\n" in text
 
 
 def test_publisher_checks_only_existing_named_resources():

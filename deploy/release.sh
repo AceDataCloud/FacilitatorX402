@@ -7,7 +7,6 @@ export TAG
 RELEASE_MODE="$(python3 deploy/render.py --check-config)"
 PREFLIGHT_JOB="facilitator-preflight-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 MIGRATION_JOB="facilitator-migrate-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
-RECONCILE_SMOKE_JOB="facilitator-reconcile-smoke-$TAG-${GITHUB_RUN_ATTEMPT:-1}"
 SNAPSHOT_DIR="$(mktemp -d)"
 ORIGINAL_DEPLOYMENT_FILE="$SNAPSHOT_DIR/deployment.json"
 ORIGINAL_SPEC_FILE="$SNAPSHOT_DIR/spec.json"
@@ -138,17 +137,8 @@ fi
 TAG="$TAG" sh deploy/run.sh
 kubectl rollout status deployment/facilitator-backend -n acedatacloud --timeout=600s
 
-kubectl delete job "$RECONCILE_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
-TEMPORARY_JOBS+=("$RECONCILE_SMOKE_JOB")
-kubectl create job "$RECONCILE_SMOKE_JOB" -n acedatacloud --from=cronjob/facilitator-reconcile
-if ! kubectl wait --for=condition=complete "job/$RECONCILE_SMOKE_JOB" -n acedatacloud --timeout=330s; then
-	kubectl logs "job/$RECONCILE_SMOKE_JOB" -n acedatacloud
-	exit 1
-fi
-kubectl logs "job/$RECONCILE_SMOKE_JOB" -n acedatacloud
-kubectl delete job "$RECONCILE_SMOKE_JOB" -n acedatacloud --ignore-not-found >/dev/null
-
+# Restoring web payment rails does not authorize replaying historical settlements.
+# Reconciliation remains suspended and requires a separate operator action.
 curl --fail --retry 5 --retry-delay 2 --connect-timeout 5 --max-time 15 https://facilitator.acedata.cloud/.well-known/x402 \
 	| jq -e '.facilitator.endpoints.verify | endswith("/verify")' >/dev/null
-kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":false}}'
 CUTOVER_COMPLETE=1

@@ -63,7 +63,9 @@ jobs:
           kubectl get deployment/facilitator-backend -n acedatacloud
           kubectl get service/facilitator-backend -n acedatacloud
 
-      - name: Stage release with payments paused
+      - name: Deploy restored Base and Solana payments
         env:
-          FACILITATOR_RELEASE_MODE: paused
+          FACILITATOR_RELEASE_MODE: restore
+          CONFIRM_FACILITATOR_PAYMENT_RESTORE: "yes"
+          FACILITATOR_RESTORE_RAILS: base-exact,base-upto,solana-exact
         run: bash ./deploy/release.sh

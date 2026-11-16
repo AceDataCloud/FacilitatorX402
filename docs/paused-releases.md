@@ -1,15 +1,19 @@
 # Paused releases and payment restoration
 
-A code release must not restore payment signing after an incident. The committed
-Deployment has zero replicas. The reconciliation CronJob is suspended. All rail
-enablement flags are false and neither template references a signer private key.
-The production workflow pins `FACILITATOR_RELEASE_MODE=paused` for both push and
-manual runs.
+Production has been authorized to serve Base exact, Base upto and Solana exact.
+The workflow explicitly selects those three rails for push and manual releases,
+so a routine code release does not leave the restored service paused. Other rails
+and scheduled reconciliation remain disabled.
+
+The underlying templates retain paused defaults: zero web replicas, suspended
+reconciliation, false rail flags and no signer private-key references. A standalone
+release still defaults to paused unless the explicit restore parameters are set.
 
 ## Stage an image while payments remain paused
 
-`BUILD_NUMBER=<built-image-tag> bash deploy/release.sh` is the default staging
-operation. It snapshots the previous configuration, suspends reconciliation,
+`FACILITATOR_RELEASE_MODE=paused BUILD_NUMBER=<built-image-tag> bash deploy/release.sh`
+is the explicit staging operation. Do not set `FACILITATOR_RESTORE_RAILS` for this
+command. It snapshots the previous configuration, suspends reconciliation,
 scales the web workload to zero and waits for its Pods to terminate. If an existing
 reconciliation Pod is present, staging fails and tells the operator to stop its
 Job. It then applies the paused web and reconciliation templates with the new
@@ -45,11 +49,11 @@ list on a paused release fail before Kubernetes changes.
 
 The renderer enables only the selected rails and adds required private-key
 Secret references only for their signers. The committed templates retain the
-paused defaults. Restoration runs database preflight and migrations, deploys
-two web replicas, and runs one reconciliation smoke Job while its CronJob is
-still suspended. Only successful smoke and metadata checks resume scheduling.
-That smoke Job can reconcile existing payments; review their original identities
-and pending state before authorizing restoration. Afterwards, validate a fresh
+paused defaults. Restoration briefly quiesces the existing web Pods for database
+preflight and migrations, then deploys two web replicas. It checks public metadata
+but never creates a reconciliation smoke Job or resumes the reconciliation
+CronJob. Review original payment identities and pending state before a separate
+authorized reconciliation action. Afterwards, validate a fresh
 controlled payment, terminal receipt and unique billing. Do not replay a
 historical signed payment as a restoration test.
 
