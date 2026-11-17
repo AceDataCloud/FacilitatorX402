@@ -30,7 +30,7 @@ def test_deploy_runs_on_main_push_and_manual_dispatch() -> None:
 def test_production_deploys_queue_instead_of_cancelling() -> None:
     text = workflow_text()
 
-    assert "concurrency:\n  group: facilitator-production\n  cancel-in-progress: false\n" in text
+    assert "concurrency:\n  group: facilitator-production\n  cancel-in-progress: false\n  queue: max\n" in text
     assert "cancel-in-progress: true" not in text
 
 
@@ -82,9 +82,10 @@ def test_workflow_preserves_only_the_authorized_restored_rails() -> None:
     assert "FACILITATOR_RESTORE_RAILS: base-exact,base-upto,solana-exact\n" in text
 
 
-def test_publisher_checks_only_existing_named_resources():
+def test_publisher_passes_explicit_context_and_run_identity():
     text = workflow_text()
-    assert "kubectl get deployment/facilitator-backend -n acedatacloud" in text
-    assert "kubectl get service/facilitator-backend -n acedatacloud" in text
+    assert "BUILD_NUMBER: ${{ github.run_id }}-${{ github.run_attempt }}" in text
+    assert "KUBE_CONTEXT=$(kubectl config current-context)" in text
+    assert "einaregilsson/build-number" not in text
+    assert "ipecho.net" not in text
     assert "kubectl get nodes" not in text
-    assert "kubectl get svc -n acedatacloud" not in text

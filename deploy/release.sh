@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
-TAG="${BUILD_NUMBER:-latest}"
+: "${BUILD_NUMBER:?BUILD_NUMBER is required}"
+: "${KUBE_CONTEXT:?KUBE_CONTEXT is required}"
+export KUBE_CONTEXT
+kubectl() { command kubectl --context "$KUBE_CONTEXT" "$@"; }
+
+TAG="$BUILD_NUMBER"
 export TAG
 RELEASE_MODE="$(python3 deploy/render.py --check-config)"
 PREFLIGHT_JOB="facilitator-preflight-$TAG-${GITHUB_RUN_ATTEMPT:-1}"

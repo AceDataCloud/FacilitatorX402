@@ -41,10 +41,32 @@ def test_invalid_restore_configuration_is_rejected(environ):
         renderer.release_configuration(environ)
 
 
-@pytest.mark.parametrize("tag", ["", "bad/tag", "../latest", "test\nvalue"])
+@pytest.mark.parametrize("tag", ["", "latest", "a" * 129, "bad/tag", "../latest", "test\nvalue"])
 def test_invalid_image_tag_is_rejected(tag):
     with pytest.raises(ValueError, match="TAG"):
         renderer.validate_tag(tag)
+
+
+@pytest.mark.parametrize(
+    "missing", ["context", "tag", "deployment.yaml", "service.yaml", "reconciliation-cronjob.yaml"]
+)
+def test_apply_rejects_incomplete_inputs_before_any_cluster_call(tmp_path, missing):
+    shutil.copytree(ROOT / "deploy", tmp_path / "deploy")
+    if missing.endswith(".yaml"):
+        (tmp_path / "deploy/production" / missing).unlink()
+    log = tmp_path / "called"
+    fake = tmp_path / "kubectl"
+    fake.write_text('#!/bin/sh\n: > "$COMMAND_LOG"\n')
+    fake.chmod(0o755)
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("FACILITATOR_", "CONFIRM_"))}
+    env.update(PATH=f"{tmp_path}:{os.environ['PATH']}", COMMAND_LOG=str(log), TAG="test-1", KUBE_CONTEXT="test-cluster")
+    if missing == "context":
+        env.pop("KUBE_CONTEXT")
+    if missing == "tag":
+        env.pop("TAG")
+    result = subprocess.run(["sh", str(tmp_path / "deploy/run.sh")], cwd="/", env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert not log.exists()
 
 
 def test_restore_only_receives_requested_signer():
@@ -114,6 +136,8 @@ def run_release(tmp_path, *, fail_apply=False, reconcile_pod=False, restore=Fals
         "import json,os,sys\n"
         "from pathlib import Path\n"
         "p=Path(os.environ['FAKE_DIR']); a=sys.argv[1:]\n"
+        "assert a[:2] == ['--context', 'test-cluster'], a\n"
+        "a=a[2:]\n"
         "with (p/'calls.jsonl').open('a') as f: f.write(json.dumps(a)+'\\n')\n"
         "if a[:2]==['get','deployment/facilitator-backend']: print((p/'deployment.json').read_text())\n"
         "elif a[:2]==['get','cronjob/facilitator-reconcile']: print((p/'cronjob.json').read_text())\n"
@@ -121,9 +145,13 @@ def run_release(tmp_path, *, fail_apply=False, reconcile_pod=False, restore=Fals
         " if 'app=facilitator-reconcile' in a and os.environ.get('FAKE_RECONCILE')=='yes':\n"
         "  print('pod/pending-reconcile')\n"
         "elif a[0]=='apply':\n"
-        " source=a[a.index('-f')+1]; data=sys.stdin.read() if source=='-' else Path(source).read_text()\n"
+        " source=a[a.index('-f')+1]; path=Path(source)\n"
+        " if source=='-': data=sys.stdin.read()\n"
+        " elif path.is_dir(): data='\\n---\\n'.join(f.read_text() for f in sorted(path.glob('*.yaml')))\n"
+        " else: data=path.read_text()\n"
         " with (p/'applied.txt').open('a') as f: f.write(data+'\\n---\\n')\n"
-        " if os.environ.get('FAKE_FAIL_APPLY')=='yes' and source.endswith('deployment.yaml'): sys.exit(1)\n"
+        " if os.environ.get('FAKE_FAIL_APPLY')=='yes':\n"
+        "  if path.is_dir() or source.endswith('deployment.yaml'): sys.exit(1)\n"
         "elif a[:2]==['patch','deployment/facilitator-backend']:\n"
         " source=next(x.split('=',1)[1] for x in a if x.startswith('--patch-file='))\n"
         " (p/'rollback.json').write_text(Path(source).read_text())\n"
@@ -141,6 +169,7 @@ def run_release(tmp_path, *, fail_apply=False, reconcile_pod=False, restore=Fals
         FAKE_FAIL_APPLY="yes" if fail_apply else "no",
         FAKE_RECONCILE="yes" if reconcile_pod else "no",
         BUILD_NUMBER="test-1",
+        KUBE_CONTEXT="test-cluster",
     )
     if restore:
         environ.update(

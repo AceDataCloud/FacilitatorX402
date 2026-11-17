@@ -11,7 +11,7 @@ release still defaults to paused unless the explicit restore parameters are set.
 
 ## Stage an image while payments remain paused
 
-`FACILITATOR_RELEASE_MODE=paused BUILD_NUMBER=<built-image-tag> bash deploy/release.sh`
+`KUBE_CONTEXT=<context> FACILITATOR_RELEASE_MODE=paused BUILD_NUMBER=<built-image-tag> bash deploy/release.sh`
 is the explicit staging operation. Do not set `FACILITATOR_RESTORE_RAILS` for this
 command. It snapshots the previous configuration, suspends reconciliation,
 scales the web workload to zero and waits for its Pods to terminate. If an existing
@@ -35,6 +35,7 @@ or install signing keys.
 A restoration command requires all three values:
 
 ```sh
+KUBE_CONTEXT=<context> \
 FACILITATOR_RELEASE_MODE=restore \
 CONFIRM_FACILITATOR_PAYMENT_RESTORE=yes \
 FACILITATOR_RESTORE_RAILS=base-exact \
@@ -70,3 +71,8 @@ These are application-release safeguards. Do not give ordinary
 application processes `x402-private` or mount whole Secret objects. Independent
 CronJobs and restricted field injection keep their signing material out of the
 Backend web process.
+
+Both entry points require an explicit Kubernetes context and image version;
+`latest` is rejected. The workflow passes its configured context once. Rendering
+finishes for all application resources before apply, and apply failures propagate
+to the existing release wrapper, including its failure-pause handler.

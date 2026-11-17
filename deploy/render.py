@@ -42,8 +42,8 @@ def release_configuration(environ):
 
 
 def validate_tag(tag):
-    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", tag):
-        raise ValueError("TAG is not a valid image tag")
+    if tag == "latest" or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
+        raise ValueError("TAG must be a valid immutable image tag")
 
 
 def render(template, tag, mode, rails):

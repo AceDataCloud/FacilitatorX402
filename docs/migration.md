@@ -291,7 +291,8 @@ official signatures.
 The following sequence records the completed July 2026 cutover. It is retained
 for rollback analysis and must not be rerun as a current deployment procedure.
 
-The production runbook is implemented by `deploy/run.sh`.
+The current production wrapper is `deploy/release.sh`; its paused defaults and
+failure policy are documented in [paused releases](paused-releases.md).
 
 1. Confirm the release image passed tests, Docker build, and candidate-chain
    validation.
@@ -371,15 +372,18 @@ merchant balance increase.
 
 ### Before rollout completion
 
-`deploy/run.sh` restores the captured Deployment specification automatically if
-preflight, migration, apply, rollout, CronJob apply, or reconciliation smoke
-fails. It also restores the previous `facilitator-reconcile` CronJob, or deletes
-the newly created CronJob when no previous resource existed. The rollback
-returns the previous replica count and waits for the old Deployment to become
-ready. Preflight, migration, and reconciliation smoke Jobs are deleted on script
-exit; their manifests retain a TTL as a secondary cleanup guard.
+`deploy/release.sh` restores the previous image/configuration after a failure
+once quiescing has started, with zero web replicas, disabled rails, no signer
+private-key references and suspended reconciliation. It never restores the old
+active payment configuration. It restores the suspended prior CronJob or deletes
+the newly created CronJob if none existed. The wrapper cleans up only its own
+temporary preflight/migration Jobs and never creates a reconciliation smoke Job.
 
 ### After rollout completion
+
+The following describes the historical official-v2 rollback analysis. It is not
+an automatic recovery procedure; use the explicit pause/restore policy above
+for current releases.
 
 1. Disable Gateway x402 traffic.
 2. Stop the official Deployment before restoring the previous image or

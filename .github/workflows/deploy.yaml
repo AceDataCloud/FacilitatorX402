@@ -12,6 +12,10 @@ on:
 concurrency:
   group: facilitator-production
   cancel-in-progress: false
+  queue: max
+
+env:
+  BUILD_NUMBER: ${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
   run:
@@ -20,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -30,20 +36,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Test IP Address
-        run: |
-          wget -qO- https://ipecho.net/plain ; echo
-
-      - name: Generate Build Number
-        uses: einaregilsson/build-number@v2
-        with:
-          token: ${{ secrets.github_token }}
-        env:
-          ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
-
-      - name: Get Build Number
-        run: echo "$BUILD_NUMBER"
 
       - name: Build Docker images
         run: docker compose build
@@ -58,10 +50,8 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG_HK }}
 
-      - name: Test Kubectl
-        run: |
-          kubectl get deployment/facilitator-backend -n acedatacloud
-          kubectl get service/facilitator-backend -n acedatacloud
+      - name: Select release context
+        run: echo "KUBE_CONTEXT=$(kubectl config current-context)" >> "$GITHUB_ENV"
 
       - name: Deploy restored Base and Solana payments
         env:

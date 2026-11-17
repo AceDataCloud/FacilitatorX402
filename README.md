@@ -108,8 +108,14 @@ on port 8000.
 ## Delivery
 
 - `.github/workflows/ci.yaml`: PR test, lint, and Docker build.
-- `.github/workflows/deploy.yaml`: manual production build and deployment from
-  `main` through `deploy/run.sh` on the Hong Kong cluster.
+- `.github/workflows/deploy.yaml`: main-push and manual production releases
+  through `deploy/release.sh` on the Hong Kong cluster. Image tags use the run ID
+  and attempt. This payment release wrapper retains quiesce/migration and
+  failure-pause guarantees.
+- `deploy/run.sh`: render the three explicitly owned resource files, then apply
+  them to `KUBE_CONTEXT`. This internal primitive requires `TAG`, preserves the
+  selected paused/restore configuration, and does not wait or perform recovery.
+  Use `release.sh` for payment staging/restoration so its safeguards run.
 
 Production templates default to **paused**: zero web replicas, suspended
 reconciliation, all payment rails disabled and no signer private-key references.
