@@ -1,7 +1,7 @@
-> Current deployment behavior: production releases now stage with payments
-> paused. The historical cutover and rollback steps below are not a payment
-> restoration command. Follow [paused releases](paused-releases.md) for current
-> staging, explicit rail restoration and failure behavior.
+> Current deployment behavior: production releases restore Base exact, Base upto,
+> and Solana exact. Standalone release commands keep paused defaults. The
+> historical cutover and rollback steps below are not a payment restoration
+> command. Follow [paused releases](paused-releases.md) for current behavior.
 
 # Official x402 v2 Facilitator Migration
 
@@ -23,14 +23,12 @@ reconciliation CronJob is deployed and smoke-tested as part of cutover.
 
 ## Migration outcome
 
-The official implementation supports all four production rails previously
-served by the legacy facilitator:
+The current production rails retained after the migration are:
 
 | Scheme | Network | CAIP-2 identifier | Asset |
 | --- | --- | --- | --- |
 | exact | Base mainnet | `eip155:8453` | Circle USDC |
 | upto | Base mainnet | `eip155:8453` | Circle USDC through Permit2 |
-| exact | SKALE Base | `eip155:1187947933` | Bridged USDC |
 | exact | Solana mainnet | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` | SPL USDC |
 
 Solana devnet exact is implemented behind configuration but is disabled. It is
@@ -41,9 +39,9 @@ a testnet compatibility option, not a production cutover requirement.
 ### Before
 
 - `x402f/views_multichain.py` selected a self-written chain handler.
-- `x402f/chain_handlers/` implemented EVM exact, EVM upto, SKALE, and Solana
+- `x402f/chain_handlers/` implemented EVM exact, EVM upto, and Solana
   verification and settlement directly.
-- Public network identifiers used short names such as `base`, `skale`, and
+- Public network identifiers used short names such as `base` and
   `solana`.
 - Recovery depended on handler-specific transaction logic.
 
@@ -69,7 +67,7 @@ locking, recovery, authorization policy, deployment, and observability.
 
 - `x402f/official.py`
   - Registers enabled schemes per network.
-  - Uses isolated signers for Base, SKALE, Solana mainnet, and optional Solana
+  - Uses isolated signers for Base, Solana mainnet, and optional Solana
     devnet.
   - Generates the official `/supported` response without contacting RPC nodes.
 - `x402f/views_official.py`
@@ -103,9 +101,10 @@ locking, recovery, authorization policy, deployment, and observability.
   - re-broadcasts an identical prepared transaction;
   - expires Solana prepared transactions after their usable window;
   - preserves pending EVM nonce ownership instead of unsafe reallocation.
-- Recovery-only aliases map historical `base`, `skale`, `solana`, and
+- Recovery-only aliases map historical `base`, `solana`, and
   `solana-devnet` records to CAIP-2 without rewriting stored identity.
-- A reconciliation CronJob runs every minute in production.
+- A reconciliation CronJob is defined for one-minute intervals; scheduling
+  remains suspended until separately authorized.
 
 ### Capability metadata and operations
 
@@ -142,8 +141,6 @@ official routes and recovery paths were validated:
 - `x402f/chain_handlers/base_exact.py`
 - `x402f/chain_handlers/base_upto.py`
 - `x402f/chain_handlers/factory.py`
-- `x402f/chain_handlers/skale_exact.py`
-- `x402f/chain_handlers/skale_upto.py`
 - `x402f/chain_handlers/solana_exact.py`
 - `x402f/chain_handlers/upto_constants.py`
 
@@ -169,7 +166,6 @@ Clients and resource servers must use the v2 CAIP-2 identifiers returned by
 | Legacy identifier | Official v2 identifier |
 | --- | --- |
 | `base` | `eip155:8453` |
-| `skale` | `eip155:1187947933` |
 | `solana` | `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp` |
 | `solana-devnet` | `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1` |
 
@@ -244,19 +240,6 @@ network identifiers, settlement authentication, and recovery settings.
 | `X402_BASE_EXACT_ENABLED` | Advertise/register exact |
 | `X402_BASE_UPTO_ENABLED` | Advertise/register Permit2 upto |
 
-### SKALE
-
-| Variable | Purpose |
-| --- | --- |
-| `X402_SKALE_RPC_URL` | SKALE Base RPC |
-| `X402_SKALE_SIGNER_PRIVATE_KEY` | Facilitator signer |
-| `X402_SKALE_SIGNER_ADDRESS` | Expected signer address |
-| `X402_SKALE_ASSET` | Approved Bridged USDC contract |
-| `X402_SKALE_PAY_TO` | Approved recipient |
-| `X402_SKALE_CHAIN_ID` | Use `1187947933` |
-| `X402_SKALE_GAS_LIMIT` | SKALE transaction gas limit |
-| `X402_SKALE_EXACT_ENABLED` | Advertise/register exact |
-
 ### Solana
 
 | Variable | Purpose |
@@ -277,9 +260,10 @@ network identifiers, settlement authentication, and recovery settings.
 Keep devnet disabled unless the fee payer has devnet SOL and the rail passes a
 real verify/settle test. Never advertise a rail that cannot settle.
 
-The production Deployment and reconciliation CronJob explicitly map Base,
-SKALE, and Solana mainnet settings from the `x402` Kubernetes Secret and enable
-the four validated production rails. Solana devnet remains disabled. Always
+The production Deployment and reconciliation CronJob map Base and Solana mainnet
+settings from the `x402` Kubernetes Secret, with signer keys selected from
+`x402-private` only when restoring their rails. The release workflow restores
+Base exact, Base upto, and Solana mainnet exact. Solana devnet remains disabled. Always
 inspect the deployed `/supported` response; code support and manifest flags do
 not prove that every Secret value is valid or that a rail can settle.
 
@@ -339,7 +323,12 @@ Before advancing traffic, `/supported` had to advertise the intended production
 kinds with CAIP-2 identifiers. The validated release advertised the four
 production rails before traffic moved.
 
-## Validation evidence
+## Historical migration validation evidence
+
+The following records describe the July migration validation, not the current
+supported-rail list. SKALE support and its runtime configuration were removed in
+November 2026; its transaction evidence is retained for audit only. Historical
+records on unsupported networks are preserved and skipped by reconciliation.
 
 The candidate completed real mainnet settlement tests:
 

@@ -34,7 +34,6 @@ from x402.schemas import SettleRequest, SettleResponse, VerifyRequest, VerifyRes
 from x402f.models import X402Authorization
 from x402f.official import (
     ROBINHOOD_MAINNET,
-    SKALE_MAINNET,
     ConfiguredFacilitator,
     build_configured_facilitator,
     configured_base_network,
@@ -313,11 +312,6 @@ def _rail_policy(network: str) -> RailPolicy:
             ),
             asset=settings.X402_BASE_ASSET,
             pay_to=settings.X402_BASE_PAY_TO,
-        ),
-        SKALE_MAINNET: RailPolicy(
-            schemes=frozenset({"exact"}) if settings.X402_SKALE_EXACT_ENABLED else frozenset(),
-            asset=settings.X402_SKALE_ASSET,
-            pay_to=settings.X402_SKALE_PAY_TO,
         ),
         ROBINHOOD_MAINNET: RailPolicy(
             schemes=frozenset({"exact"}) if settings.X402_ROBINHOOD_EXACT_ENABLED else frozenset(),

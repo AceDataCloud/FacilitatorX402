@@ -2,7 +2,7 @@ from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from x402.mechanisms.svm.constants import SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2
 
-from x402f.official import ROBINHOOD_MAINNET, SKALE_MAINNET
+from x402f.official import ROBINHOOD_MAINNET
 
 HOME_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -134,11 +134,6 @@ def build_well_known_x402_data(facilitator_url: str) -> dict:
         supported_networks.append({"network": "base", "caip2": settings.X402_BASE_NETWORK})
         if settings.X402_BASE_SIGNER_ADDRESS:
             addresses["base"] = settings.X402_BASE_SIGNER_ADDRESS
-    if settings.X402_SKALE_EXACT_ENABLED:
-        add_kind("exact", SKALE_MAINNET)
-        supported_networks.append({"network": "skale", "caip2": SKALE_MAINNET})
-        if settings.X402_SKALE_SIGNER_ADDRESS:
-            addresses["skale"] = settings.X402_SKALE_SIGNER_ADDRESS
     if settings.X402_ROBINHOOD_EXACT_ENABLED:
         add_kind("exact", ROBINHOOD_MAINNET)
         supported_networks.append({"network": "robinhood", "caip2": ROBINHOOD_MAINNET})

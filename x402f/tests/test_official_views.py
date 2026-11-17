@@ -128,7 +128,6 @@ class OfficialViewTests(TestCase):
         X402_BASE_NETWORK="eip155:8453",
         X402_BASE_EXACT_ENABLED=True,
         X402_BASE_UPTO_ENABLED=True,
-        X402_SKALE_EXACT_ENABLED=True,
         X402_ROBINHOOD_EXACT_ENABLED=True,
         X402_SOLANA_MAINNET_ENABLED=True,
         X402_SOLANA_RECURRING_ENABLED=True,
@@ -142,7 +141,6 @@ class OfficialViewTests(TestCase):
             {
                 ("exact", "eip155:8453"),
                 ("upto", "eip155:8453"),
-                ("exact", "eip155:1187947933"),
                 ("exact", "eip155:4663"),
                 ("exact", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
                 ("upto", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
@@ -159,7 +157,6 @@ class OfficialViewTests(TestCase):
     @override_settings(
         X402_BASE_EXACT_ENABLED=False,
         X402_BASE_UPTO_ENABLED=False,
-        X402_SKALE_EXACT_ENABLED=False,
         X402_ROBINHOOD_EXACT_ENABLED=False,
         X402_SOLANA_MAINNET_ENABLED=True,
         X402_SOLANA_RECURRING_ENABLED=True,
@@ -194,7 +191,6 @@ class OfficialViewTests(TestCase):
         X402_BASE_EXACT_ENABLED=True,
         X402_BASE_SIGNER_ADDRESS="0x1111111111111111111111111111111111111111",
         X402_BASE_UPTO_ENABLED=False,
-        X402_SKALE_EXACT_ENABLED=False,
         X402_SOLANA_MAINNET_ENABLED=False,
         X402_SOLANA_DEVNET_ENABLED=False,
     )
@@ -255,6 +251,25 @@ class OfficialViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["isValid"])
+        self.assertEqual(X402Authorization.objects.count(), 0)
+
+    @override_settings(X402_SKALE_EXACT_ENABLED=True)
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_retired_network_cannot_verify_or_settle_with_stale_flag(self, factory) -> None:
+        for network in ("skale", "eip155:1187947933"):
+            with self.subTest(network=network):
+                body = _request_body()
+                body["paymentPayload"]["accepted"]["network"] = network
+                body["paymentRequirements"]["network"] = network
+
+                verified = self.client.post(
+                    reverse("x402:verify"), data=json.dumps(body), content_type="application/json"
+                )
+                settled = self._settle(body)
+
+                self.assertFalse(verified.json()["isValid"])
+                self.assertFalse(settled.json()["success"])
+        factory.assert_not_called()
         self.assertEqual(X402Authorization.objects.count(), 0)
 
     def test_verify_rejects_hybrid_permit2_payload(self) -> None:
@@ -460,14 +475,14 @@ class OfficialViewTests(TestCase):
             signer_nonce=7,
         )
         X402Authorization.objects.create(
-            nonce="skale",
+            nonce="arbitrum",
             payer="payer",
             pay_to="payee",
             value="1",
             valid_after=timezone.now(),
             valid_before=timezone.now() + timedelta(minutes=1),
             signature="signature",
-            payment_requirements={"network": "eip155:1187947933"},
+            payment_requirements={"network": "eip155:42161"},
             payment_payload={},
             status=X402Authorization.Status.SETTLING,
             signer_nonce=1000,

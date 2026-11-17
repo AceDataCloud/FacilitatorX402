@@ -28,7 +28,7 @@ MANIFEST = (
     Path(__file__).resolve().parent.parent / "conformance" / "profiles" / "core-v2" / "2026-07-19" / "manifest.json"
 )
 
-_SHORT_NETWORKS = {"base", "solana", "skale"}
+_SHORT_NETWORKS = {"base", "solana"}
 _CAIP2 = re.compile(r"[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}")
 _SECRET_KEY = re.compile(r"(?:secret|api[_-]?key|token|authorization|private|mnemonic)", re.IGNORECASE)
 
@@ -104,7 +104,6 @@ class ConformanceManifestTests(TestCase):
     X402_BASE_UPTO_ENABLED=False,
     X402_BASE_NETWORK="eip155:8453",
     X402_BASE_SIGNER_ADDRESS="0x000000000000000000000000000000000000dEaD",
-    X402_SKALE_EXACT_ENABLED=False,
     X402_ROBINHOOD_EXACT_ENABLED=False,
     X402_SOLANA_MAINNET_ENABLED=False,
 )

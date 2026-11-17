@@ -70,18 +70,36 @@ class ReconciliationCommandTests(TestCase):
 
     @patch("x402f.management.commands.reconcile_x402._configured")
     @patch("x402f.management.commands.reconcile_x402._transaction_status", return_value="failed")
-    def test_legacy_skale_network_uses_caip2_signer_and_releases_failed_transaction(self, _status, configured) -> None:
+    def test_legacy_base_network_uses_caip2_signer_and_releases_failed_transaction(self, _status, configured) -> None:
         signer = Mock()
         configured.return_value = SimpleNamespace(signer_for=lambda _network: signer)
         legacy = record(transaction_hash="0xlegacy")
-        legacy.payment_requirements = {"network": "skale"}
+        legacy.payment_requirements = {"network": "base"}
         legacy.save(update_fields=["payment_requirements"])
 
         self.assertEqual(reconcile_record(legacy), "failed_released")
-        configured.assert_called_once_with("eip155:1187947933")
+        configured.assert_called_once_with("eip155:8453")
         legacy.refresh_from_db()
         self.assertEqual(legacy.status, X402Authorization.Status.VERIFIED)
         self.assertIsNone(legacy.transaction_hash)
+
+    @patch("x402f.management.commands.reconcile_x402._configured")
+    @patch("x402f.management.commands.reconcile_x402._broadcast_prepared")
+    def test_retired_network_records_are_preserved_without_rebroadcast(self, broadcast, configured) -> None:
+        for network in ("skale", "eip155:1187947933"):
+            for transaction_hash in (None, "0xretired"):
+                with self.subTest(network=network, transaction_hash=transaction_hash):
+                    retired = record(transaction_hash=transaction_hash, prepared_transaction="raw")
+                    retired.payment_requirements = {"network": network}
+                    retired.save(update_fields=["payment_requirements"])
+                    before = X402Authorization.objects.filter(pk=retired.pk).values().get()
+
+                    self.assertEqual(reconcile_record(retired), "unsupported")
+
+                    after = X402Authorization.objects.filter(pk=retired.pk).values().get()
+                    self.assertEqual(after, before)
+        configured.assert_not_called()
+        broadcast.assert_not_called()
 
     @override_settings(X402_PREPARED_MAX_AGE_SECONDS=60)
     @patch("x402f.management.commands.reconcile_x402._configured")
@@ -115,7 +133,7 @@ class ReconciliationCommandTests(TestCase):
     @patch("x402f.views_official.verify_recurring")
     def test_recurring_hashless_claim_is_rebuilt_and_remains_settling(self, verify, build, send) -> None:
         recurring = record()
-        recurring.payment_requirements = {"network": "solana:mainnet", "amount": "100"}
+        recurring.payment_requirements = {"network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "amount": "100"}
         recurring.payment_payload = {
             "payload": {
                 "authorizationProfile": PROFILE,
@@ -142,7 +160,7 @@ class ReconciliationCommandTests(TestCase):
     @patch("x402f.views_official.recurring_transaction_status", return_value="pending")
     def test_recurring_expired_prepared_transaction_stops_rebroadcasting(self, _status, send) -> None:
         recurring = record(transaction_hash="solana-signature", prepared_transaction="prepared")
-        recurring.payment_requirements = {"network": "solana:mainnet", "amount": "100"}
+        recurring.payment_requirements = {"network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "amount": "100"}
         recurring.payment_payload = {
             "payload": {
                 "authorizationProfile": PROFILE,
@@ -169,7 +187,7 @@ class ReconciliationCommandTests(TestCase):
     @patch("x402f.views_official.recurring_transaction_status", return_value="confirmed")
     def test_recurring_confirmed_claim_settles(self, _status) -> None:
         recurring = record(transaction_hash="solana-signature", prepared_transaction="prepared")
-        recurring.payment_requirements = {"network": "solana:mainnet", "amount": "100"}
+        recurring.payment_requirements = {"network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "amount": "100"}
         recurring.payment_payload = {
             "payload": {
                 "authorizationProfile": PROFILE,

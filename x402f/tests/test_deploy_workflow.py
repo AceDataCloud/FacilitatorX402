@@ -12,7 +12,7 @@ def workflow_text() -> str:
 def test_settlement_deployment_keeps_pay_to_in_secrets() -> None:
     deployment = DEPLOYMENT.read_text()
 
-    for name in ("X402_BASE_PAY_TO", "X402_SOLANA_PAY_TO", "X402_SKALE_PAY_TO"):
+    for name in ("X402_BASE_PAY_TO", "X402_SOLANA_PAY_TO"):
         block = deployment.split(f"- name: {name}", 1)[1].split("- name:", 1)[0]
         assert "secretKeyRef" in block
         assert "value: " not in block
@@ -65,7 +65,6 @@ def test_payment_rails_are_disabled_in_runtime_and_reconciler() -> None:
             "X402_BASE_UPTO_ENABLED",
             "X402_SOLANA_MAINNET_ENABLED",
             "X402_SOLANA_RECURRING_ENABLED",
-            "X402_SKALE_EXACT_ENABLED",
             "X402_ARBITRUM_EXACT_ENABLED",
         ):
             block = manifest.split(f"- name: {name}", 1)[1].split("- name:", 1)[0]
