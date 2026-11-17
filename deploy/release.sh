@@ -22,23 +22,6 @@ QUIESCE_STARTED=0
 ORIGINAL_CRONJOB_EXISTS=0
 TEMPORARY_JOBS=()
 
-snapshot_cronjob() {
-	local name="$1"
-	local output="$2"
-	local raw="$output.raw"
-	if ! kubectl get "cronjob/$name" -n acedatacloud --ignore-not-found -o json >"$raw"; then
-		rm -f "$raw"
-		return 1
-	fi
-	if [ ! -s "$raw" ]; then
-		rm -f "$raw"
-		return 2
-	fi
-	jq -e 'del(.status,.metadata.creationTimestamp,.metadata.generation,.metadata.managedFields,.metadata.resourceVersion,.metadata.uid)' \
-		<"$raw" >"$output"
-	rm -f "$raw"
-}
-
 rollback() {
 	set +e
 	rollback_failed=0
@@ -47,9 +30,6 @@ rollback() {
 		kubectl apply -f "$ORIGINAL_CRONJOB_FILE" || rollback_failed=1
 	else
 		kubectl delete cronjob/facilitator-reconcile -n acedatacloud --ignore-not-found || rollback_failed=1
-	fi
-	if [ "$ORIGINAL_REPLICAS" -gt 0 ]; then
-		kubectl rollout status deployment/facilitator-backend -n acedatacloud --timeout=600s || rollback_failed=1
 	fi
 	return "$rollback_failed"
 }
@@ -70,36 +50,34 @@ on_exit() {
 trap on_exit EXIT
 
 kubectl get deployment/facilitator-backend -n acedatacloud -o json >"$ORIGINAL_DEPLOYMENT_FILE"
-ORIGINAL_REPLICAS="$(jq -er '.spec.replicas' "$ORIGINAL_DEPLOYMENT_FILE")"
 # Rollback preserves the previous image/configuration while keeping funds stopped.
 jq -e '{spec: (.spec | .replicas = 0 |
   .template.spec.containers[].env |= map(select(.name | endswith("_SIGNER_PRIVATE_KEY") | not) |
     if (.name | endswith("_ENABLED")) then del(.valueFrom) | .value = "false" else . end))}' \
 	"$ORIGINAL_DEPLOYMENT_FILE" >"$ORIGINAL_SPEC_FILE"
-ORIGINAL_REPLICAS=0
-if snapshot_cronjob facilitator-reconcile "$ORIGINAL_CRONJOB_FILE"; then
-	ORIGINAL_CRONJOB_EXISTS=1
-elif [ "$?" -ne 2 ]; then
-	exit 1
-fi
-if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
-	jq '.spec.suspend = true |
+kubectl get cronjob/facilitator-reconcile -n acedatacloud --ignore-not-found -o json >"$ORIGINAL_CRONJOB_FILE"
+if [ -s "$ORIGINAL_CRONJOB_FILE" ]; then
+	jq -e 'del(.status,.metadata.creationTimestamp,.metadata.generation,.metadata.managedFields,.metadata.resourceVersion,.metadata.uid) |
+	  .spec.suspend = true |
 	  .spec.jobTemplate.spec.template.spec.containers[].env |=
 	    map(select(.name | endswith("_SIGNER_PRIVATE_KEY") | not) |
 	      if (.name | endswith("_ENABLED")) then del(.valueFrom) | .value = "false" else . end)' \
 		"$ORIGINAL_CRONJOB_FILE" >"$ORIGINAL_CRONJOB_FILE.paused"
 	mv "$ORIGINAL_CRONJOB_FILE.paused" "$ORIGINAL_CRONJOB_FILE"
+	ORIGINAL_CRONJOB_EXISTS=1
+fi
+# Both staging and restoration first stop web traffic and reconciliation.
+# The Gateway x402 feature flag must already be disabled for restoration.
+QUIESCE_STARTED=1
+if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
+	kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":true}}'
+fi
+kubectl scale deployment/facilitator-backend -n acedatacloud --replicas=0
+PODS="$(kubectl get pod -l app=facilitator-backend -n acedatacloud -o name)"
+if [ -n "$PODS" ]; then
+	kubectl wait --for=delete pod -l app=facilitator-backend -n acedatacloud --timeout=300s
 fi
 if [ "$RELEASE_MODE" = paused ]; then
-	QUIESCE_STARTED=1
-	if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
-		kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":true}}'
-	fi
-	kubectl scale deployment/facilitator-backend -n acedatacloud --replicas=0
-	PODS="$(kubectl get pod -l app=facilitator-backend -n acedatacloud -o name)"
-	if [ -n "$PODS" ]; then
-		kubectl wait --for=delete pod -l app=facilitator-backend -n acedatacloud --timeout=300s
-	fi
 	if [ -n "$(kubectl get pod -l app=facilitator-reconcile -n acedatacloud \
 		--field-selector=status.phase!=Succeeded,status.phase!=Failed -o name)" ]; then
 		echo "Stop existing reconciliation Jobs before staging a paused release" >&2
@@ -110,18 +88,6 @@ if [ "$RELEASE_MODE" = paused ]; then
 	CUTOVER_COMPLETE=1
 	exit 0
 fi
-# Freeze legacy verify traffic before checking for unsettled authorizations.
-# The Gateway x402 feature flag must already be disabled per the cutover runbook.
-QUIESCE_STARTED=1
-if [ "$ORIGINAL_CRONJOB_EXISTS" -eq 1 ]; then
-	kubectl patch cronjob/facilitator-reconcile -n acedatacloud --type=merge -p '{"spec":{"suspend":true}}'
-fi
-kubectl scale deployment/facilitator-backend -n acedatacloud --replicas=0
-PODS="$(kubectl get pod -l app=facilitator-backend -n acedatacloud -o name)"
-if [ -n "$PODS" ]; then
-	kubectl wait --for=delete pod -l app=facilitator-backend -n acedatacloud --timeout=300s
-fi
-
 TEMPORARY_JOBS+=("$PREFLIGHT_JOB")
 # shellcheck disable=SC2016
 sed -e 's/\${TAG}/'"$TAG"'/g' -e 's/\${PREFLIGHT_JOB}/'"$PREFLIGHT_JOB"'/g' \

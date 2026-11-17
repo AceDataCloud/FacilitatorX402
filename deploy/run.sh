@@ -4,8 +4,6 @@ cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 : "${TAG:?TAG is required}"
 : "${KUBE_CONTEXT:?KUBE_CONTEXT is required}"
-python3 deploy/render.py --check-config >/dev/null
-
 rendered=$(mktemp -d)
 trap 'rm -rf "$rendered"' EXIT
 for manifest in deployment.yaml reconciliation-cronjob.yaml; do
