@@ -130,6 +130,12 @@ X402_TX_TIMEOUT_SECONDS = env.int("X402_TX_TIMEOUT_SECONDS", 120)
 X402_SETTLE_TOKEN = env.str("X402_SETTLE_TOKEN", "")
 X402_FACILITATOR_PUBLIC_URL = env.str("X402_FACILITATOR_PUBLIC_URL", "")
 
+from core.exact_recipients import load_additional_exact_recipients  # noqa: E402
+
+X402_ADDITIONAL_EXACT_RECIPIENTS = load_additional_exact_recipients(
+    env.json("X402_ADDITIONAL_EXACT_RECIPIENTS", default="{}")
+)
+
 X402_BASE_RPC_URL = env.str("X402_BASE_RPC_URL", "")
 X402_BASE_NETWORK = env.str("X402_BASE_NETWORK", "eip155:8453")
 X402_BASE_CHAIN_ID = env.int("X402_BASE_CHAIN_ID", 8453)
