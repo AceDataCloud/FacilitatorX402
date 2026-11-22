@@ -1,7 +1,7 @@
 # Ace Data Cloud Facilitator X402
 
 Official verification and settlement implementation for the x402 v2 protocol,
-built on the Python SDK (`x402==2.16.0`). The canonical production endpoint is
+built on the Python SDK (`x402==2.25.0`). The canonical production endpoint is
 <https://facilitator.acedata.cloud>. The temporary validation candidate was
 retired after the official-v2 production cutover completed in July 2026.
 
