@@ -1,3 +1,4 @@
+import base64
 import struct
 from datetime import timedelta
 from types import SimpleNamespace
@@ -5,8 +6,10 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from solders.hash import Hash
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey
+from solders.transaction import VersionedTransaction
 from solders.transaction_status import TransactionConfirmationStatus
 
 from x402f.models import X402Authorization
@@ -15,6 +18,8 @@ from x402f.svm_recurring import (
     PROFILE,
     RecurringDelegation,
     available_amount,
+    build_transfer_transaction,
+    derive_ata,
     parse_recurring_delegation,
     recurring_nonce,
     transaction_status,
@@ -78,7 +83,6 @@ class SvmRecurringTests(TestCase):
             X402_SOLANA_SIGNER_PRIVATE_KEY=self.private_key,
             X402_SOLANA_SUBSCRIPTIONS_PROGRAM=PROGRAM,
             X402_SOLANA_ASSET=MINT,
-            X402_SOLANA_PAY_TO=PAY_TO,
         )
         self.settings.enable()
         self.addCleanup(self.settings.disable)
@@ -90,6 +94,23 @@ class SvmRecurringTests(TestCase):
         self.assertEqual(parsed.authority_init_id, 42)
         self.assertEqual(parsed.amount_per_period, 1000)
         self.assertEqual(parsed.amount_pulled_in_period, 100)
+
+    @patch("x402f.svm_recurring._rpc")
+    def test_transfer_uses_the_original_request_recipient(self, rpc):
+        rpc.return_value.get_latest_blockhash.return_value = SimpleNamespace(
+            value=SimpleNamespace(blockhash=Hash.new_unique())
+        )
+        first_recipient = str(Keypair().pubkey())
+        second_recipient = str(Keypair().pubkey())
+        signatures = []
+        for recipient in (first_recipient, second_recipient):
+            signature, encoded = build_transfer_transaction(_delegation(self.delegatee), 200, pay_to=recipient)
+            tx = VersionedTransaction.from_bytes(base64.b64decode(encoded))
+            receiver_index = tx.message.instructions[0].accounts[3]
+            self.assertEqual(str(tx.message.account_keys[receiver_index]), derive_ata(recipient, MINT))
+            self.assertEqual(tx.verify_with_results(), [True])
+            signatures.append(signature)
+        self.assertNotEqual(*signatures)
 
     def test_nonce_binds_profile_network_delegation_and_request(self):
         first = recurring_nonce(NETWORK, DELEGATION, "request-1")
@@ -169,7 +190,7 @@ class SvmRecurringTests(TestCase):
         self.assertEqual(record.status, X402Authorization.Status.SETTLING)
         self.assertEqual(record.settled_amount, "200")
         self.assertIsNotNone(record.transaction_broadcast_at)
-        build.assert_called_once()
+        build.assert_called_once_with(verify.return_value[0], 200, pay_to=record.pay_to)
 
     @patch("x402f.views_official.recurring_transaction_status", return_value="confirmed")
     def test_confirmed_retry_marks_settled(self, _status):

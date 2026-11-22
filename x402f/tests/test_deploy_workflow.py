@@ -9,13 +9,12 @@ def workflow_text() -> str:
     return WORKFLOW.read_text()
 
 
-def test_settlement_deployment_keeps_pay_to_in_secrets() -> None:
-    deployment = DEPLOYMENT.read_text()
-
-    for name in ("X402_BASE_PAY_TO", "X402_SOLANA_PAY_TO"):
-        block = deployment.split(f"- name: {name}", 1)[1].split("- name:", 1)[0]
-        assert "secretKeyRef" in block
-        assert "value: " not in block
+def test_runtime_configuration_does_not_own_merchant_recipients() -> None:
+    for name in ("deployment.yaml", "reconciliation-cronjob.yaml", "preflight-job.yaml", "migration-job.yaml"):
+        deployment = (ROOT / "deploy/production" / name).read_text()
+        assert "RECIPIENTS" not in deployment
+        assert "ADDITIONAL_EXACT_RECIPIENTS" not in deployment
+        assert "_PAY_TO" not in deployment
 
 
 def test_deploy_runs_on_main_push_and_manual_dispatch() -> None:

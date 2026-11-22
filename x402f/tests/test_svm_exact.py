@@ -93,6 +93,7 @@ def payment(
     compute_limit: int = 100_000,
     compute_price: int = 5_000,
     transfer_amount: int = 100_000,
+    pay_to: str = PAY_TO,
 ) -> tuple[PaymentPayload, PaymentRequirements, FakeSigner]:
     sponsor = fee_payer or Keypair()
     payer = authority or Keypair()
@@ -100,7 +101,7 @@ def payment(
     token_program = Pubkey.from_string(TOKEN_PROGRAM_ADDRESS)
     mint = Pubkey.from_string(USDC)
     source = Pubkey.from_string(derive_ata(str(payer.pubkey()), USDC, TOKEN_PROGRAM_ADDRESS))
-    destination = Pubkey.from_string(derive_ata(PAY_TO, USDC, TOKEN_PROGRAM_ADDRESS))
+    destination = Pubkey.from_string(derive_ata(pay_to, USDC, TOKEN_PROGRAM_ADDRESS))
     transfer = Instruction(
         token_program,
         bytes([12]) + transfer_amount.to_bytes(8, "little") + bytes([6]),
@@ -133,7 +134,7 @@ def payment(
             "network": SOLANA_MAINNET_CAIP2,
             "asset": USDC,
             "amount": "100000",
-            "payTo": PAY_TO,
+            "payTo": pay_to,
             "maxTimeoutSeconds": 120,
             "extra": {
                 "feePayer": str(sponsor.pubkey()),
@@ -154,6 +155,19 @@ def payment(
 
 def verify(payload, requirements, signer):
     return OutcomeExactSvmFacilitatorScheme(signer).verify(payload, requirements)
+
+
+def test_accepts_payer_signed_transfers_to_different_recipients() -> None:
+    for _ in range(3):
+        recipient = str(Keypair().pubkey())
+        payload, requirements, signer = payment(pay_to=recipient)
+        assert verify(payload, requirements, signer).is_valid
+
+
+def test_signed_transaction_cannot_satisfy_a_different_business_recipient() -> None:
+    payload, requirements, signer = payment()
+    changed = requirements.model_copy(update={"pay_to": str(Keypair().pubkey())})
+    assert not verify(payload, changed, signer).is_valid
 
 
 def test_accepts_observed_phantom_eight_instruction_layout() -> None:

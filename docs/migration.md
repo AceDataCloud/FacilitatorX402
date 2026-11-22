@@ -72,7 +72,7 @@ locking, recovery, authorization policy, deployment, and observability.
   - Generates the official `/supported` response without contacting RPC nodes.
 - `x402f/views_official.py`
   - Parses official v2 `VerifyRequest` and `SettleRequest` models.
-  - Enforces configured asset and recipient allowlists.
+  - Enforces configured network/mechanism/asset policy and verifies the payer-authorized recipient.
   - Reserves verified authorizations before settlement.
   - Supports Base upto verification at a signed ceiling and settlement at an
     actual amount no greater than that ceiling.
@@ -210,8 +210,10 @@ broadcast.
 ## Configuration migration
 
 Existing per-network RPC, signer, fee-payer, asset, gas, and timeout variables
-remain valid. The migration adds explicit recipients, enable flags, canonical
-network identifiers, settlement authentication, and recovery settings.
+remain valid. The recipient comes from each payment request and its authorization;
+see [payment recipients](payment-recipients.md). Resource servers construct their
+own expected requirements. Rail policy, settlement authentication and recovery
+remain independent.
 
 ### Core settings
 
@@ -236,7 +238,6 @@ network identifiers, settlement authentication, and recovery settings.
 | `X402_BASE_SIGNER_PRIVATE_KEY` | Facilitator gas signer |
 | `X402_BASE_SIGNER_ADDRESS` | Expected signer address; validated against key |
 | `X402_BASE_ASSET` | Approved Circle USDC contract |
-| `X402_BASE_PAY_TO` | Approved recipient |
 | `X402_BASE_EXACT_ENABLED` | Advertise/register exact |
 | `X402_BASE_UPTO_ENABLED` | Advertise/register Permit2 upto |
 
@@ -248,14 +249,12 @@ network identifiers, settlement authentication, and recovery settings.
 | `X402_SOLANA_SIGNER_PRIVATE_KEY` | Facilitator fee-payer signer |
 | `X402_SOLANA_SIGNER_ADDRESS` | Expected fee-payer address |
 | `X402_SOLANA_ASSET` | Approved SPL USDC mint |
-| `X402_SOLANA_PAY_TO` | Approved recipient owner |
 | `X402_SOLANA_MAINNET_ENABLED` | Advertise/register mainnet exact |
 | `X402_SOLANA_DEVNET_ENABLED` | Advertise/register optional devnet exact |
 | `X402_SOLANA_DEVNET_RPC_URL` | Devnet RPC |
 | `X402_SOLANA_DEVNET_SIGNER_PRIVATE_KEY` | Independent devnet fee-payer key |
 | `X402_SOLANA_DEVNET_SIGNER_ADDRESS` | Expected devnet fee-payer address |
 | `X402_SOLANA_DEVNET_ASSET` | Devnet USDC mint |
-| `X402_SOLANA_DEVNET_PAY_TO` | Devnet recipient owner |
 
 Keep devnet disabled unless the fee payer has devnet SOL and the rail passes a
 real verify/settle test. Never advertise a rail that cannot settle.

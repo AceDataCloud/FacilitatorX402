@@ -35,8 +35,6 @@ spec:
             - secretRef:
                 name: pgsql-facilitator
           env:
-            - name: X402_ADDITIONAL_EXACT_RECIPIENTS
-              value: '{"eip155:8453":["0xdd457Ac1Bb07e93E1D360368B66d7316FC010647"],"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp":["ECc8ficTwNNYHNxepdNrVC9tyg3iH46Xv9eiKrqUR9q4"]}'
             - name: APP_ENV
               value: production
             - name: APPLICATION_SECRET_KEY

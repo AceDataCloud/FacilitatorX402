@@ -38,8 +38,6 @@ spec:
                 - secretRef:
                     name: pgsql-facilitator
               env:
-                - name: X402_ADDITIONAL_EXACT_RECIPIENTS
-                  value: '{"eip155:8453":["0xdd457Ac1Bb07e93E1D360368B66d7316FC010647"],"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp":["ECc8ficTwNNYHNxepdNrVC9tyg3iH46Xv9eiKrqUR9q4"]}'
                 - name: APP_ENV
                   value: production
                 - name: APPLICATION_SECRET_KEY
@@ -52,12 +50,6 @@ spec:
                   value: acedatacloud_facilitator
                 - name: X402_ARBITRUM_EXACT_ENABLED
                   value: "false"
-                - name: X402_ARBITRUM_PAY_TO
-                  valueFrom:
-                    secretKeyRef:
-                      name: x402
-                      key: ARBITRUM_PAY_TO
-                      optional: true
                 - name: X402_ARBITRUM_RPC_URL
                   valueFrom:
                     secretKeyRef:
@@ -98,12 +90,6 @@ spec:
                       key: BASE_ASSET
                       name: x402
                       optional: false
-                - name: X402_BASE_PAY_TO
-                  valueFrom:
-                    secretKeyRef:
-                      key: BASE_PAY_TO
-                      name: x402
-                      optional: false
                 - name: X402_BASE_EXACT_ENABLED
                   value: "false"
                 - name: X402_BASE_UPTO_ENABLED
@@ -134,12 +120,6 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       key: SOLANA_ASSET
-                      name: x402
-                      optional: false
-                - name: X402_SOLANA_PAY_TO
-                  valueFrom:
-                    secretKeyRef:
-                      key: SOLANA_PAY_TO
                       name: x402
                       optional: false
                 - name: X402_SOLANA_MAINNET_ENABLED
