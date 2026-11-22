@@ -356,6 +356,9 @@ def _validate_policy(request_model: VerifyRequest | SettleRequest) -> None:
         if network.startswith("solana:")
         else requirements.pay_to.lower() == policy.pay_to.lower()
     )
+    if requirements.scheme == "exact":
+        recipient = requirements.pay_to if network.startswith("solana:") else requirements.pay_to.lower()
+        pay_to_matches |= recipient in settings.X402_ADDITIONAL_EXACT_RECIPIENTS.get(network, ())
     if not asset_matches:
         raise ValueError("Unsupported payment asset")
     if not policy.pay_to or not pay_to_matches:

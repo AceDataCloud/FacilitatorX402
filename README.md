@@ -70,6 +70,15 @@ Core settings:
 - `X402_SETTLEMENT_LEASE_SECONDS`
 - `X402_PREPARED_MAX_AGE_SECONDS`
 - `X402_TX_TIMEOUT_SECONDS`
+- `X402_ADDITIONAL_EXACT_RECIPIENTS`: optional JSON map from Base/Solana
+  mainnet network IDs to explicitly approved recipient address lists. These
+  addresses are accepted only for `exact` payments on an already enabled rail.
+  The primary recipient remains required and remains the sole recipient for
+  `upto` and recurring payments. Base addresses are compared without case;
+  Solana addresses retain their case. Unknown networks, zero addresses and
+  malformed lists fail startup. The production deployment adds the separately
+  approved Envar receiving addresses without changing the Ace recipients,
+  settlement authentication, assets, prices or signing identities.
 
 Each enabled rail requires its RPC URL, signer key/address, approved asset, and
 approved recipient. See [docs/migration.md](docs/migration.md) for the complete
