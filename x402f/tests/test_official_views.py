@@ -86,7 +86,6 @@ def _upto_request_body(body: dict) -> dict:
 
 @override_settings(
     X402_BASE_ASSET="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    X402_BASE_PAY_TO="0x1111111111111111111111111111111111111111",
     X402_SETTLE_TOKEN="internal-secret",
 )
 class OfficialViewTests(TestCase):
@@ -102,10 +101,6 @@ class OfficialViewTests(TestCase):
 
     def setUp(self) -> None:
         self.body = _request_body()
-        pay_to = self.body["paymentRequirements"]["payTo"]
-        self.settings_override = override_settings(X402_BASE_PAY_TO=pay_to)
-        self.settings_override.enable()
-        self.addCleanup(self.settings_override.disable)
 
     def _settle(self, body):  # noqa: ANN001, ANN201
         return self.client.post(
@@ -203,7 +198,6 @@ class OfficialViewTests(TestCase):
     @override_settings(
         X402_SOLANA_MAINNET_ENABLED=True,
         X402_SOLANA_ASSET="AbCd",
-        X402_SOLANA_PAY_TO="PayTo",
     )
     def test_solana_policy_is_case_sensitive(self) -> None:
         requirements = SimpleNamespace(
@@ -215,14 +209,12 @@ class OfficialViewTests(TestCase):
         with self.assertRaisesRegex(ValueError, "asset"):
             _validate_policy(SimpleNamespace(payment_requirements=requirements))
         requirements.asset = "AbCd"
-        requirements.pay_to = "payto"
-        with self.assertRaisesRegex(ValueError, "recipient"):
-            _validate_policy(SimpleNamespace(payment_requirements=requirements))
+        # Recipient verification is owned by the signed-payment mechanism.
+        _validate_policy(SimpleNamespace(payment_requirements=requirements))
 
     @override_settings(
         X402_ROBINHOOD_EXACT_ENABLED=True,
         X402_ROBINHOOD_ASSET="0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
-        X402_ROBINHOOD_PAY_TO="0x1111111111111111111111111111111111111111",
     )
     def test_robinhood_policy_accepts_enabled_network(self) -> None:
         requirements = SimpleNamespace(
@@ -533,15 +525,16 @@ class OfficialViewTests(TestCase):
     def test_settled_solana_payment_rejects_duplicate_settlement(self) -> None:
         body = self.body
         network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        pay_to = "11111111111111111111111111111112"
         body["paymentPayload"]["accepted"]["network"] = network
         body["paymentRequirements"]["network"] = network
         body["paymentRequirements"]["asset"] = "mint"
-        body["paymentRequirements"]["payTo"] = "payee"
+        body["paymentRequirements"]["payTo"] = pay_to
         body["paymentPayload"]["payload"] = {"transaction": "base64-transaction"}
         X402Authorization.objects.create(
             nonce=f"svm:{network}:message-hash",
             payer="payer-address",
-            pay_to="payee",
+            pay_to=pay_to,
             value="1",
             valid_after=timezone.now(),
             valid_before=timezone.now() + timedelta(minutes=1),
@@ -558,7 +551,6 @@ class OfficialViewTests(TestCase):
             override_settings(
                 X402_SOLANA_MAINNET_ENABLED=True,
                 X402_SOLANA_ASSET="mint",
-                X402_SOLANA_PAY_TO="payee",
             ),
             patch("x402f.views_official.decode_transaction_from_payload", return_value=SimpleNamespace()),
             patch("x402f.views_official.transaction_message_hash", return_value="message-hash"),
@@ -571,6 +563,36 @@ class OfficialViewTests(TestCase):
         self.assertFalse(response.json()["success"])
         self.assertEqual(response.json()["errorReason"], "payment_failed")
         self.assertEqual(response.json()["transaction"], "")
+
+    @patch("x402f.views_official.build_configured_facilitator")
+    def test_verified_payment_cannot_change_recipient(self, factory) -> None:
+        factory.side_effect = self._facilitator_factory
+        other = "0x2222222222222222222222222222222222222222"
+        for scheme in ("exact", "upto"):
+            with self.subTest(scheme=scheme):
+                body = _request_body()
+                if scheme == "upto":
+                    body = _upto_request_body(body)
+                original = body["paymentRequirements"]["payTo"]
+                with override_settings(X402_BASE_UPTO_ENABLED=True):
+                    verified = self.client.post(
+                        reverse("x402:verify"), data=json.dumps(body), content_type="application/json"
+                    )
+                    self.assertTrue(verified.json()["isValid"])
+                    record = X402Authorization.objects.latest("id")
+                    body["paymentRequirements"]["payTo"] = other
+                    body["paymentPayload"]["accepted"]["payTo"] = other
+                    if scheme == "exact":
+                        body["paymentPayload"]["payload"]["authorization"]["to"] = other
+                    else:
+                        body["paymentPayload"]["payload"]["permit2Authorization"]["witness"]["to"] = other
+                    with patch.object(FakeFacilitator, "settle") as settle:
+                        response = self._settle(body)
+                    self.assertFalse(response.json()["success"])
+                    settle.assert_not_called()
+                    record.refresh_from_db()
+                    self.assertEqual(record.pay_to, original)
+                    self.assertIsNone(record.transaction_hash)
 
     @patch("x402f.views_official.build_configured_facilitator")
     def test_settle_rejects_payload_changed_after_verify(self, factory) -> None:

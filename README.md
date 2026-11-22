@@ -1,7 +1,7 @@
 # Ace Data Cloud Facilitator X402
 
 Official verification and settlement implementation for the x402 v2 protocol,
-built on the Python SDK (`x402==2.16.0`). The canonical production endpoint is
+built on the Python SDK (`x402==2.25.0`). The canonical production endpoint is
 <https://facilitator.acedata.cloud>. The temporary validation candidate was
 retired after the official-v2 production cutover completed in July 2026.
 
@@ -36,7 +36,7 @@ and transaction construction. This service adds:
 - per-network PostgreSQL advisory locks across two replicas;
 - prepared transaction persistence before broadcast;
 - deterministic recovery and reconciliation;
-- asset and recipient allowlists;
+- enabled-network, mechanism and asset policy;
 - authenticated settlement and replay protection.
 
 Solana verification reports `insufficient_token_balance` when the USDC transfer
@@ -70,18 +70,9 @@ Core settings:
 - `X402_SETTLEMENT_LEASE_SECONDS`
 - `X402_PREPARED_MAX_AGE_SECONDS`
 - `X402_TX_TIMEOUT_SECONDS`
-- `X402_ADDITIONAL_EXACT_RECIPIENTS`: optional JSON map from Base/Solana
-  mainnet network IDs to explicitly approved recipient address lists. These
-  addresses are accepted only for `exact` payments on an already enabled rail.
-  The primary recipient remains required and remains the sole recipient for
-  `upto` and recurring payments. Base addresses are compared without case;
-  Solana addresses retain their case. Unknown networks, zero addresses and
-  malformed lists fail startup. The production deployment adds the separately
-  approved Envar receiving addresses without changing the Ace recipients,
-  settlement authentication, assets, prices or signing identities.
-
-Each enabled rail requires its RPC URL, signer key/address, approved asset, and
-approved recipient. See [docs/migration.md](docs/migration.md) for the complete
+Each enabled rail requires its RPC URL, signer key/address and approved asset.
+Recipients come from the payment request and its authorization, not service
+configuration. See [payment recipients](docs/payment-recipients.md). See [docs/migration.md](docs/migration.md) for the complete
 Base, Solana, migration, cutover, and rollback configuration.
 
 ## Development
@@ -108,8 +99,8 @@ docker compose up
 ```
 
 Compose loads the gitignored `.env` when present. It can still build without the
-file in CI, but payment rails require their configured RPC, signer, asset, and
-recipient values before runtime use.
+file in CI, but payment rails require their configured RPC, signer and asset
+values before runtime use.
 
 The shared image runs as non-root UID/GID `10001` and serves ASGI with Uvicorn
 on port 8000.

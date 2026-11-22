@@ -9,19 +9,14 @@ NETWORK_CASES = [
 
 
 @pytest.mark.parametrize("alias,chain_id,asset", NETWORK_CASES)
-def test_new_rail_requires_explicit_enable_and_valid_recipient(monkeypatch, alias, chain_id, asset):
+def test_new_rail_requires_explicit_enable_independent_of_recipient_policy(monkeypatch, alias, chain_id, asset):
     prefix = f"X402_{alias.upper()}"
     monkeypatch.delenv(f"{prefix}_EXACT_ENABLED", raising=False)
-    monkeypatch.setenv(f"{prefix}_PAY_TO", "0x" + "1" * 40)
     assert f"eip155:{chain_id}" not in load_evm_exact_networks(environs.Env())
     monkeypatch.setenv(f"{prefix}_EXACT_ENABLED", "true")
     config = load_evm_exact_networks(environs.Env())[f"eip155:{chain_id}"]
     assert config["asset"] == asset
-    assert config["pay_to"] == "0x" + "1" * 40
-    for invalid in ("", "0x" + "0" * 40, "0x" + "g" * 40, "solana-wallet"):
-        monkeypatch.setenv(f"{prefix}_PAY_TO", invalid)
-        with pytest.raises(ValueError, match="PAY_TO"):
-            load_evm_exact_networks(environs.Env())
+    assert "pay_to" not in config
 
 
 @pytest.mark.parametrize("alias,chain_id,asset", NETWORK_CASES)
@@ -35,7 +30,7 @@ def test_deployed_rail_receives_optional_secret_configuration(alias, chain_id, a
         enabled = source.split(f"- name: X402_{alias.upper()}_EXACT_ENABLED", 1)[1].split("- name:", 1)[0]
         assert 'value: "false"' in enabled
         assert f"X402_{alias.upper()}_SIGNER_PRIVATE_KEY" not in source
-        for field in ["PAY_TO", "RPC_URL", "SIGNER_ADDRESS", "GAS_LIMIT"]:
+        for field in ["RPC_URL", "SIGNER_ADDRESS", "GAS_LIMIT"]:
             key = f"{alias.upper()}_{field}"
             secret_name = "x402"
             pattern = (

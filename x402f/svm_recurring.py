@@ -165,8 +165,12 @@ def payment_identity(payload: dict[str, Any], network: str, max_timeout_seconds:
 
 
 def verify_recurring(
-    payload: dict[str, Any], amount: int, *, include_reservations: bool = True
+    payload: dict[str, Any], amount: int, *, pay_to: str, include_reservations: bool = True
 ) -> tuple[RecurringDelegation, int]:
+    try:
+        Pubkey.from_string(pay_to)
+    except ValueError as exc:
+        raise PermanentRecurringAuthorizationError("Recurring recipient is invalid.") from exc
     delegation_address, _ = recurring_payload_fields(payload)
     delegation = load_recurring_delegation(delegation_address)
     available = available_amount(delegation) if include_reservations else available_on_chain(delegation)
@@ -188,7 +192,7 @@ def derive_ata(owner: str, mint: str) -> str:
     return str(address)
 
 
-def build_transfer_transaction(delegation: RecurringDelegation, amount: int) -> tuple[str, str]:
+def build_transfer_transaction(delegation: RecurringDelegation, amount: int, *, pay_to: str) -> tuple[str, str]:
     validate_delegation(delegation)
     if amount <= 0:
         raise PermanentRecurringAuthorizationError("Settlement amount must be positive.")
@@ -196,7 +200,7 @@ def build_transfer_transaction(delegation: RecurringDelegation, amount: int) -> 
     program = Pubkey.from_string(settings.X402_SOLANA_SUBSCRIPTIONS_PROGRAM)
     mint = Pubkey.from_string(delegation.mint)
     source = Pubkey.from_string(derive_ata(delegation.wallet, delegation.mint))
-    receiver = Pubkey.from_string(derive_ata(settings.X402_SOLANA_PAY_TO, delegation.mint))
+    receiver = Pubkey.from_string(derive_ata(pay_to, delegation.mint))
     event_authority, _ = Pubkey.find_program_address([b"event_authority"], program)
     instruction = Instruction(
         program,

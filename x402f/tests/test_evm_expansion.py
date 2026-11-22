@@ -18,7 +18,6 @@ NETWORK_CASES = [
 @pytest.mark.parametrize("alias,chain_id,asset", NETWORK_CASES)
 def test_new_network_routes_only_exact_to_its_own_signer(monkeypatch, alias, chain_id, asset):
     monkeypatch.setenv(f"X402_{alias.upper()}_EXACT_ENABLED", "true")
-    monkeypatch.setenv(f"X402_{alias.upper()}_PAY_TO", "0x" + "1" * 40)
     networks = load_evm_exact_networks(environs.Env())
     network = f"eip155:{chain_id}"
     config = networks[network]
@@ -26,6 +25,7 @@ def test_new_network_routes_only_exact_to_its_own_signer(monkeypatch, alias, cha
     config.update(
         rpc_url="https://rpc.invalid", private_key="test-only", address=signer.account.address, gas_limit=500000
     )
+    pay_to = "0x" + "1" * 40
     with override_settings(X402_EVM_EXACT_NETWORKS=networks):
         with patch("x402f.official._evm_signer", return_value=signer) as builder:
             registry = build_configured_registry(networks={network})
@@ -43,7 +43,7 @@ def test_new_network_routes_only_exact_to_its_own_signer(monkeypatch, alias, cha
             network=network,
             asset=asset,
             amount="10000",
-            pay_to=config["pay_to"],
+            pay_to=pay_to,
             max_timeout_seconds=60,
         )
 
@@ -57,11 +57,11 @@ def test_new_network_routes_only_exact_to_its_own_signer(monkeypatch, alias, cha
         _validate_policy(request(requirements))
         for field, value, reason in (
             ("asset", "0x" + "2" * 40, "asset"),
-            ("pay_to", "0x" + "2" * 40, "recipient"),
             ("scheme", "upto", "kind"),
         ):
             with pytest.raises(ValueError, match=reason):
                 _validate_policy(request(requirements.model_copy(update={field: value})))
+        _validate_policy(request(requirements.model_copy(update={"pay_to": "0x" + "2" * 40})))
     with override_settings(X402_EVM_EXACT_NETWORKS={}):
         with pytest.raises(ValueError, match="network"):
             _validate_policy(request(requirements))

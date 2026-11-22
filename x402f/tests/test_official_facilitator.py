@@ -72,9 +72,9 @@ class FakeSvmSigner:
         return [self.address]
 
 
-def _payment() -> tuple[PaymentPayload, PaymentRequirements]:
+def _payment(*, pay_to_self: bool = False) -> tuple[PaymentPayload, PaymentRequirements]:
     payer = Account.create("official-payer")
-    pay_to = Account.create("official-payee").address
+    pay_to = payer.address if pay_to_self else Account.create("official-payee").address
     now = int(time.time())
     nonce = "0x" + os.urandom(32).hex()
     authorization = {

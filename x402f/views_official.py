@@ -77,7 +77,6 @@ class PaymentIdentity:
 class RailPolicy:
     schemes: frozenset[str]
     asset: str
-    pay_to: str
 
 
 @contextmanager
@@ -299,7 +298,7 @@ def _payment_identity(request_model: VerifyRequest | SettleRequest) -> PaymentId
 def _rail_policy(network: str) -> RailPolicy:
     config = settings.X402_EVM_EXACT_NETWORKS.get(network)
     if config is not None:
-        return RailPolicy(schemes=frozenset({"exact"}), asset=config["asset"], pay_to=config["pay_to"])
+        return RailPolicy(schemes=frozenset({"exact"}), asset=config["asset"])
     policies = {
         settings.X402_BASE_NETWORK: RailPolicy(
             schemes=frozenset(
@@ -311,22 +310,18 @@ def _rail_policy(network: str) -> RailPolicy:
                 if enabled
             ),
             asset=settings.X402_BASE_ASSET,
-            pay_to=settings.X402_BASE_PAY_TO,
         ),
         ROBINHOOD_MAINNET: RailPolicy(
             schemes=frozenset({"exact"}) if settings.X402_ROBINHOOD_EXACT_ENABLED else frozenset(),
             asset=settings.X402_ROBINHOOD_ASSET,
-            pay_to=settings.X402_ROBINHOOD_PAY_TO,
         ),
         SOLANA_MAINNET_CAIP2: RailPolicy(
             schemes=frozenset({"exact"}) if settings.X402_SOLANA_MAINNET_ENABLED else frozenset(),
             asset=settings.X402_SOLANA_ASSET,
-            pay_to=settings.X402_SOLANA_PAY_TO,
         ),
         SOLANA_DEVNET_CAIP2: RailPolicy(
             schemes=frozenset({"exact"}) if settings.X402_SOLANA_DEVNET_ENABLED else frozenset(),
             asset=settings.X402_SOLANA_DEVNET_ASSET,
-            pay_to=settings.X402_SOLANA_DEVNET_PAY_TO,
         ),
     }
     try:
@@ -351,18 +346,11 @@ def _validate_policy(request_model: VerifyRequest | SettleRequest) -> None:
         if network.startswith("solana:")
         else requirements.asset.lower() == policy.asset.lower()
     )
-    pay_to_matches = (
-        requirements.pay_to == policy.pay_to
-        if network.startswith("solana:")
-        else requirements.pay_to.lower() == policy.pay_to.lower()
-    )
-    if requirements.scheme == "exact":
-        recipient = requirements.pay_to if network.startswith("solana:") else requirements.pay_to.lower()
-        pay_to_matches |= recipient in settings.X402_ADDITIONAL_EXACT_RECIPIENTS.get(network, ())
     if not asset_matches:
         raise ValueError("Unsupported payment asset")
-    if not policy.pay_to or not pay_to_matches:
-        raise ValueError("Unsupported payment recipient")
+    # Standard mechanisms bind payTo to the payer's authorization/transaction.
+    # Resource servers bind expected terms; delegated profiles retain their
+    # separate authorization checks and use the original verified recipient.
 
 
 def _verify_request(verify_request: VerifyRequest, configured: ConfiguredFacilitator):
@@ -373,7 +361,9 @@ def _verify_request(verify_request: VerifyRequest, configured: ConfiguredFacilit
     if not amount.isdigit():
         return VerifyResponse(is_valid=False, invalid_reason="recurring_authorization_amount_invalid")
     try:
-        delegation, _ = verify_recurring(serialized_payload, int(amount))
+        delegation, _ = verify_recurring(
+            serialized_payload, int(amount), pay_to=verify_request.payment_requirements.pay_to
+        )
     except RecurringAuthorizationError as exc:
         logger.warning("recurring authorization rejected: error_type={}", type(exc).__name__)
         return VerifyResponse(is_valid=False, invalid_reason="recurring_authorization_invalid")
@@ -588,8 +578,8 @@ def advance_recurring_settlement(record: X402Authorization, network: str) -> str
                 return "conflict"
             if current.transaction_hash:
                 return "pending"
-            delegation, _ = verify_recurring(payload, int(amount), include_reservations=False)
-            transaction_hash, prepared = build_transfer_transaction(delegation, int(amount))
+            delegation, _ = verify_recurring(payload, int(amount), pay_to=current.pay_to, include_reservations=False)
+            transaction_hash, prepared = build_transfer_transaction(delegation, int(amount), pay_to=current.pay_to)
             persisted = X402Authorization.objects.filter(
                 pk=record.pk,
                 status=X402Authorization.Status.SETTLING,
