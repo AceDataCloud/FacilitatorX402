@@ -12,6 +12,7 @@ from x402f.views_official import _validate_policy
 
 NETWORK_CASES = [
     ("arbitrum", 42161, "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
+    ("polygon", 137, "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
 ]
 
 
